@@ -409,12 +409,19 @@ class AssetGenerator:
         return str(thumb_path)
 
     def _find_thumbnail_font(self) -> str:
-        """サムネイル用日本語フォント（太字優先）"""
+        """サムネイル用日本語フォント（太字優先、Windows / Linux 両対応）"""
         candidates = [
+            # Windows
             "C:/Windows/Fonts/YuGothB.ttc",
             "C:/Windows/Fonts/YuGothM.ttc",
             "C:/Windows/Fonts/msgothic.ttc",
             "C:/Windows/Fonts/meiryo.ttc",
+            # Linux (fonts-noto-cjk)
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            # Linux (fonts-ipafont)
+            "/usr/share/fonts/truetype/fonts-ipafont-gothic/ipag.ttf",
         ]
         for path in candidates:
             if os.path.exists(path):

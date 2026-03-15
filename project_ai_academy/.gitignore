@@ -1,0 +1,27 @@
+# Google認証情報（絶対にコミットしないこと）
+credentials.json
+token.json
+youtube_token.json
+service_account.json
+
+# 環境変数
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 生成アセット（リポジトリに含めない）
+assets/images/
+assets/audio/
+assets/thumbnails/
+videos/
+episodes/
+*.log
+output.txt
+*.wav
+
+# OS
+.DS_Store
+Thumbs.db

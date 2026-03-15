@@ -1,0 +1,9 @@
+google-genai
+gspread
+google-auth-oauthlib
+google-auth
+google-api-python-client
+python-dotenv
+Pillow
+moviepy
+numpy

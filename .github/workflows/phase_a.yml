@@ -1,0 +1,46 @@
+name: "Soul Reboot - Phase A (台本生成)"
+
+on:
+  schedule:
+    - cron: "0 15 * * *" # UTC 15:00 = JST 00:00
+  workflow_dispatch: # 手動実行も可能
+
+jobs:
+  generate-script:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python dependencies
+        run: pip install -r project_ai_academy/requirements.txt
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Setup Google credentials
+        run: |
+          echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" | base64 -d > project_ai_academy/credentials.json
+          echo "${{ secrets.GOOGLE_TOKEN_JSON }}" | base64 -d > project_ai_academy/token.json
+
+      - name: Setup environment
+        run: |
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > project_ai_academy/.env
+          echo "SOUL_REBOOT_SPREADSHEET_ID=${{ secrets.SOUL_REBOOT_SPREADSHEET_ID }}" >> project_ai_academy/.env
+
+      - name: Run Phase A (台本生成)
+        working-directory: project_ai_academy
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python autonomous_engine.py

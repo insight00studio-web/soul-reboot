@@ -1,0 +1,58 @@
+name: "Soul Reboot - Phase B (公開パイプライン)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      episode:
+        description: "エピソード番号"
+        required: true
+        type: number
+      skip_upload:
+        description: "YouTubeアップロードをスキップ"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies (ffmpeg)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: pip install -r project_ai_academy/requirements.txt
+
+      - name: Setup Google credentials
+        run: |
+          echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" | base64 -d > project_ai_academy/credentials.json
+          echo "${{ secrets.GOOGLE_TOKEN_JSON }}" | base64 -d > project_ai_academy/token.json
+
+      - name: Setup YouTube credentials
+        run: |
+          echo "${{ secrets.YOUTUBE_TOKEN_JSON }}" | base64 -d > project_ai_academy/youtube_token.json
+
+      - name: Setup environment
+        run: |
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > project_ai_academy/.env
+          echo "SOUL_REBOOT_SPREADSHEET_ID=${{ secrets.SOUL_REBOOT_SPREADSHEET_ID }}" >> project_ai_academy/.env
+
+      - name: Run Phase B (公開パイプライン)
+        working-directory: project_ai_academy
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: |
+          ARGS="--episode ${{ inputs.episode }}"
+          if [ "${{ inputs.skip_upload }}" = "true" ]; then
+            ARGS="$ARGS --skip-upload"
+          fi
+          python publish_pipeline.py $ARGS

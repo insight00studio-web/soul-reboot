@@ -25,8 +25,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install system dependencies (ffmpeg)
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install system dependencies (ffmpeg + Japanese fonts)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk
 
       - name: Install Python dependencies
         run: pip install -r project_ai_academy/requirements.txt

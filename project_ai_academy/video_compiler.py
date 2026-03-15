@@ -61,18 +61,26 @@ class VideoCompiler:
     # ------------------------------------------------------------------
 
     def _find_japanese_font(self) -> str:
-        """Windows上で利用可能な日本語フォントを検索"""
+        """利用可能な日本語フォントを検索（Windows / Linux 両対応）"""
         candidates = [
+            # Windows
             "C:/Windows/Fonts/YuGothB.ttc",
             "C:/Windows/Fonts/YuGothM.ttc",
             "C:/Windows/Fonts/msgothic.ttc",
             "C:/Windows/Fonts/meiryo.ttc",
+            # Linux (fonts-noto-cjk)
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            # Linux (fonts-ipafont)
+            "/usr/share/fonts/truetype/fonts-ipafont-gothic/ipag.ttf",
+            "/usr/share/fonts/truetype/fonts-ipafont-gothic/ipagp.ttf",
         ]
         for path in candidates:
             if os.path.exists(path):
                 return path
         raise FileNotFoundError(
-            "日本語フォントが見つかりません。Windows標準フォントが必要です。"
+            "日本語フォントが見つかりません。Windows または Linux (fonts-noto-cjk) が必要です。"
         )
 
     def _get_audio_duration(self, audio_path: str) -> float:

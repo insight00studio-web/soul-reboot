@@ -5,5 +5,5 @@ google-auth
 google-api-python-client
 python-dotenv
 Pillow
-moviepy
+moviepy==1.0.3
 numpy

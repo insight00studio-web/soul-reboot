@@ -524,8 +524,9 @@ class AssetGenerator:
                     processed_scenes.add(scene_num)
 
             # --- 音声生成 ---
-            # 既に音声パスがある場合はスキップ
-            if not line.get("音声ファイルパス"):
+            # パスが設定済みでもファイルが存在しない場合（別ランナー等）は再生成する
+            existing_audio = line.get("音声ファイルパス")
+            if not existing_audio or not os.path.exists(existing_audio):
                 if speaker and speaker in self.voice_map:
                     audio_path = self.generate_voice(speaker, text, tone, ep_num, row_idx, awakening=awakening)
                     if audio_path:

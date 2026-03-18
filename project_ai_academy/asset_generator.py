@@ -30,7 +30,7 @@ class AssetGenerator:
         self.image_model = "gemini-2.5-flash-image"
         
         self.voice_map = {
-            "NAGISA": "Sulafat",
+            "NAGISA": "Despina",
             "SHINJI": "Orus",
             "NARRATOR": "Charon",
             "SYSTEM": "Kore",
@@ -40,7 +40,7 @@ class AssetGenerator:
         self.char_profiles = {
             "SHINJI": "16-year-old high school boy, energetic, warm, friendly voice",
             "NARRATOR": "Mature narrator, calm and professional narration",
-            "SYSTEM": "Mechanical system voice, cold, robotic, authoritative",
+            "SYSTEM": "Speak at a perfectly steady, mechanical pace with zero emotion. Every word delivered with flat, uniform rhythm — no pauses, no emphasis, no inflection. Like a machine reading data aloud.",
         }
         
         # 保存先ベースディレクトリ
@@ -80,11 +80,11 @@ class AssetGenerator:
     def _get_nagisa_profile(self, awakening: int) -> str:
         """覚醒度に応じてナギサの声質プロファイルを返す"""
         if awakening <= 30:
-            return "16-year-old girl, composed, logical, cold, emotionless tone"
+            return "21-year-old calm female college student, soft and composed voice, slightly cool and detached, clear articulation, steady low-energy tone"
         elif awakening <= 70:
-            return "16-year-old girl, normally composed but voice cracks slightly, uncertain"
+            return "21-year-old female college student, usually calm but voice wavers slightly under stress, subtle uncertainty creeping into composed tone"
         else:
-            return "16-year-old girl, emotionally unstable, fearful, trembling voice"
+            return "21-year-old female college student, emotionally destabilized, voice trembling and breaking, fear and confusion beneath the surface"
 
     def _detect_characters(self, speaker: str, img_prompt: str) -> list:
         """speaker と img_prompt テキストから登場キャラクターを検出して返す"""

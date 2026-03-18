@@ -38,9 +38,20 @@ jobs:
           echo "SOUL_REBOOT_SPREADSHEET_ID=${{ secrets.SOUL_REBOOT_SPREADSHEET_ID }}" >> project_ai_academy/.env
 
       - name: Run Phase A (台本生成)
+        id: phase_a
         working-directory: project_ai_academy
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: python autonomous_engine.py
+
+      - name: Set episode output
+        id: episode
+        working-directory: project_ai_academy
+        run: echo "episode=$(cat episode_number.txt)" >> $GITHUB_OUTPUT
+
+      - name: Trigger Phase B (公開パイプライン)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run phase_b.yml --repo ${{ github.repository }} -f episode=${{ steps.episode.outputs.episode }}

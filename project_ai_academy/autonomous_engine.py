@@ -665,6 +665,9 @@ def main():
             elapsed_seconds=time.time() - start_time,
             script_char_count=script_char_count,
         )
+        # Phase B 自動トリガー用にエピソード番号を書き出す
+        with open("episode_number.txt", "w") as f:
+            f.write(str(episode_number))
     except Exception as e:
         notify_error(episode_number=episode_number, step=current_step, error=e)
         raise

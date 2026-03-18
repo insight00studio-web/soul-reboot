@@ -192,7 +192,7 @@ def _build_description(episode_number: int, title: str, cliffhanger: str) -> str
         "",
     ]
     if cliffhanger:
-        lines.append(f"次回予告: {cliffhanger}")
+        lines.append(f"今話のクライマックス: {cliffhanger}")
         lines.append("")
     lines.extend([
         "---",

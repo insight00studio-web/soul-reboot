@@ -17,16 +17,19 @@
 
 Phase A 完了後、メールで「台本確認依頼」を送信し、**人間の承認を待つ**。
 
-### Phase B: アセット〜公開（承認後に一括自動実行）
+> **動画尺**: 台本は4シーン以上・20行以上を必須とし、動画尺は約5分を目標とする。
 
-スプレッドシートの台本を確認し、`approved=TRUE` にした後、以下を一括実行する。
+### Phase B: アセット〜公開（Phase A 成功後に自動トリガー）
+
+Phase A 成功後、`phase_a.yml` が `gh workflow run phase_b.yml` で自動的にトリガーする。
+スプレッドシートで `approved=TRUE` が確認できれば即座に実行される。手動トリガーも可能。
 
 | 順序 | アクション | モジュール |
 | :--- | :--- | :--- |
 | 1 | 音声生成（TTS） + 画像生成 | `asset_generator.py` |
 | 2 | 動画編集・MP4書き出し | `video_compiler.py` |
 | 3.5 | サムネイル生成（Scene 1ベース + テキストオーバーレイ） | `asset_generator.py` |
-| 4 | YouTube予約アップロード（公開時刻: 翌朝 06:00 JST） | `youtube_uploader.py` |
+| 4 | YouTube予約アップロード（公開時刻: 翌朝 06:00 JST）※概要欄に「今話のクライマックス」を記載 | `youtube_uploader.py` |
 | 4.5 | サムネイル設定 | `youtube_uploader.py` |
 | 5 | **完了メール送信** | `notifier.py` |
 
@@ -79,8 +82,11 @@ Phase A / Phase B ともに GitHub Actions で実行する。
 
 | ワークフロー | トリガー | 概要 |
 | :--- | :--- | :--- |
-| `phase_a.yml` | 毎日 UTC 15:00（JST 00:00） + 手動 | 台本生成（autonomous_engine.py） |
-| `phase_b.yml` | 手動（エピソード番号指定） | アセット生成〜YouTube公開（publish_pipeline.py） |
+| `phase_a.yml` | 毎日 UTC 15:00（JST 00:00） + 手動 | 台本生成（autonomous_engine.py）→ Phase B を自動トリガー |
+| `phase_b.yml` | Phase A 完了後に自動 + 手動（エピソード番号指定） | アセット生成〜YouTube公開（publish_pipeline.py） |
 
 認証は `CLAUDE_CODE_OAUTH_TOKEN` 環境変数でサブスク Opus 4.6 を利用。
 Google Sheets / YouTube の OAuth2 トークンは GitHub Secrets に base64 エンコードで格納。
+
+> **【重要】トークン運用**: `CLAUDE_CODE_OAUTH_TOKEN` は約36〜48時間で期限切れになる。
+> 毎晩 23:00 までに `update_token.ps1`（プロジェクトルートに配置）を実行して GitHub Secret を更新すること。

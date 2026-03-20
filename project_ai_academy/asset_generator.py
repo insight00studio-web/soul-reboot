@@ -95,13 +95,33 @@ class AssetGenerator:
                 detected.append(char_key)
         return detected
 
-    def _get_attire_context(self) -> str:
-        """公開日の曜日・月を取得し、服装・背景コンテキスト文字列を返す。
+    # 学校内シーンを検出するキーワード（画像プロンプト内で使われる英語・日本語）
+    SCHOOL_LOCATION_KEYWORDS = [
+        "classroom", "library", "school", "hallway", "corridor", "rooftop",
+        "shoe locker", "nurse office", "infirmary", "music room", "gym",
+        "cafeteria", "auditorium", "laboratory", "teachers office",
+        "教室", "図書室", "図書館", "廊下", "屋上", "下駄箱", "昇降口",
+        "保健室", "音楽室", "体育館", "食堂", "講堂", "理科室", "職員室",
+    ]
+
+    def _get_attire_context(self, img_prompt: str = "") -> str:
+        """公開日の曜日・月と画像プロンプトから服装コンテキストを返す。
+
+        ルール:
+          - 学校内シーン → 曜日に関係なく常に制服
+          - 平日（月〜金） → 制服
+          - 休日（土・日） → 季節に応じた普段着
 
         公開日の算出:
           - 実行時刻 06:00 JST 以降 → 翌日06:00公開 → 翌日の曜日を使う
           - 実行時刻 00:00〜05:59 JST → 当日06:00公開 → 当日の曜日を使う
         """
+        # 学校内シーンなら曜日に関係なく制服を強制
+        prompt_lower = img_prompt.lower()
+        for keyword in self.SCHOOL_LOCATION_KEYWORDS:
+            if keyword in prompt_lower:
+                return "school uniform, necktie, blazer"
+
         JST = timezone(timedelta(hours=9))
         now = datetime.now(JST)
         publish_date = now.date()
@@ -110,9 +130,9 @@ class AssetGenerator:
         weekday = publish_date.weekday()  # 0=月曜, 6=日曜
         month = publish_date.month
 
-        if weekday < 5:  # 平日（月〜金）→ 学校背景・制服
+        if weekday < 5:  # 平日（月〜金）→ 制服
             return "school uniform, necktie, blazer"
-        else:  # 土日・祝日 → 学校外・普段着
+        else:  # 土日 → 季節に応じた普段着
             attire = self.weekend_attire.get(month, "casual outfit")
             return attire
 
@@ -144,7 +164,7 @@ class AssetGenerator:
     def build_image_prompt(self, img_prompt: str, speaker: str, awakening: int) -> str:
         """参照画像ベースの自然言語指示プロンプトを生成する"""
         characters = self._detect_characters(speaker, img_prompt)
-        attire = self._get_attire_context()
+        attire = self._get_attire_context(img_prompt)
         overlay = self._get_emotional_overlay(awakening)
 
         if characters:

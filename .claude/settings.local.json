@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python test_notify.py)",
+      "Bash(echo $PYTHONSTARTUP)",
+      "Bash(PYTHONSTARTUP=\"\" python test_notify.py)",
+      "Bash(py --version)",
+      "Bash(where py)",
+      "Bash(py test_notify.py)",
+      "Bash(powershell.exe -Command \"[System.Environment]::GetEnvironmentVariable\\(''GMAIL_ADDRESS'', ''User''\\)\")",
+      "Bash(powershell.exe -Command \"[System.Environment]::GetEnvironmentVariable\\(''GMAIL_APP_PASSWORD'', ''User''\\)\")",
+      "Bash(py autonomous_engine.py --episode 1 --force)",
+      "Bash(py asset_generator.py --episode 1)",
+      "Bash(py -c \":*)"
+    ]
+  }
+}

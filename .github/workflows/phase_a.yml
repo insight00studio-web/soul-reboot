@@ -5,6 +5,9 @@ on:
     - cron: "0 15 * * *" # UTC 15:00 = JST 00:00
   workflow_dispatch: # 手動実行も可能
 
+permissions:
+  actions: write
+
 jobs:
   generate-script:
     runs-on: ubuntu-latest

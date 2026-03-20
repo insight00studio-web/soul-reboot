@@ -184,7 +184,7 @@ class SoulRebootDB:
         rows_to_add = []
         for line in lines:
             line["話数"] = episode_number
-            line.setdefault("承認済", "FALSE")
+            line.setdefault("承認済", "TRUE")
             row_data = [str(line.get(h, "")) for h in headers]
             rows_to_add.append(row_data)
 

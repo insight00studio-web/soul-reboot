@@ -10,6 +10,7 @@ Soul Reboot - Google Spreadsheet DB アクセス層
 """
 
 import gspread
+from gspread.exceptions import WorksheetNotFound
 from datetime import datetime, date
 from typing import Optional
 import json
@@ -524,7 +525,11 @@ class SoulRebootDB:
 
     def append_analytics(self, stats: list[dict]) -> None:
         """Analyticsシートに視聴統計を追記する"""
-        ws = self._sheet(SHEET_ANALYTICS)
+        try:
+            ws = self._sheet(SHEET_ANALYTICS)
+        except WorksheetNotFound:
+            print(f"  [WARN] シート '{SHEET_ANALYTICS}' が見つかりません。スキップします。")
+            return
         headers = ws.row_values(1)
         rows = []
         for s in stats:
@@ -536,7 +541,10 @@ class SoulRebootDB:
 
     def get_latest_analytics(self, limit: int = 5) -> list[dict]:
         """直近N話分の最新アナリティクスを返す（各話の最新収集日のみ）"""
-        ws = self._sheet(SHEET_ANALYTICS)
+        try:
+            ws = self._sheet(SHEET_ANALYTICS)
+        except WorksheetNotFound:
+            return []
         records = ws.get_all_records()
         if not records:
             return []
@@ -643,8 +651,11 @@ class SoulRebootDB:
             )
 
         # コメント傾向サマリー（最新50件の感情分析から）
-        ws = self._sheet(SHEET_COMMENTS)
-        records = ws.get_all_records()
+        try:
+            ws = self._sheet(SHEET_COMMENTS)
+            records = ws.get_all_records()
+        except WorksheetNotFound:
+            records = []
         if records:
             sentiments = [r.get("AI感情分析", "") for r in records[-50:] if r.get("AI感情分析")]
             if sentiments:

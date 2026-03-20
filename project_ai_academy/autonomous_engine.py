@@ -415,7 +415,7 @@ def step_writer(db: SoulRebootDB, _config: dict, episode_number: int, plot: dict
                 "話者": line.get("speaker", ""),
                 "セリフ・地の文": line.get("line_text", ""),
                 "感情トーン": line.get("tone", ""),
-                "音声キャラ": {"NAGISA": "Sulafat", "SHINJI": "Orus", "NARRATOR": "Charon", "SYSTEM": "Kore"}.get(line.get("speaker", "").upper(), ""),
+                "音声キャラ": {"NAGISA": "Despina", "SHINJI": "Orus", "NARRATOR": "Charon", "SYSTEM": "Kore"}.get(line.get("speaker", "").upper(), ""),
                 "音声ファイルパス": line.get("audio_file_path", ""),
             })
         db.append_script_lines(episode_number, mapped_lines)
@@ -470,7 +470,7 @@ def step_editor(db: SoulRebootDB, episode_number: int,
     "話者": "NAGISA | SHINJI | NARRATOR | SYSTEM",
     "セリフ・地の文": "セリフまたは地の文",
     "感情トーン": "トーン",
-    "音声キャラ": "Sulafat | Orus | Charon | Kore",
+    "音声キャラ": "Despina | Orus | Charon | Kore",
     "音声ファイルパス": "",
     "notes": "変更理由（変更した行のみ）"
   }}

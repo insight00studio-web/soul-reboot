@@ -92,13 +92,23 @@ def notify_success(
     send_notification(subject, body)
 
 
+def _sanitize_error(error: Exception) -> str:
+    """エラーメッセージから内部パスを除去する"""
+    import re
+    msg = f"{type(error).__name__}: {error}"
+    # Unix系パス（GitHub Actions等）とWindowsパスをマスク
+    msg = re.sub(r"(/home/runner/work|/tmp|C:\\Users\\[^\s\\]+)[^\s\"']*", "<path>", msg)
+    return msg
+
+
 def notify_error(episode_number: int, step: str, error: Exception) -> None:
     """エラー通知"""
     subject = f"[エラー] Soul Reboot 第{episode_number}話 エラー発生"
+    sanitized = _sanitize_error(error)
     body = f"""第{episode_number}話 エラー停止
 
 ステップ: {step}
-エラー: {type(error).__name__}: {error}
+エラー: {sanitized}
 
 → PC側でログを確認してください
 """

@@ -304,7 +304,7 @@ class SoulRebootDB:
         records = ws.get_all_records()
         pending = [r for r in records if r.get("採用ステータス") == "PENDING"]
         # スコア降順ソート
-        pending.sort(key=lambda x: int(x.get("採用スコア", 0)), reverse=True)
+        pending.sort(key=lambda x: _safe_int(x.get("採用スコア", 0)), reverse=True)
         return pending[:limit]
 
     # -------------------------------------------------------------------

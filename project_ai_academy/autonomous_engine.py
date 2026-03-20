@@ -36,6 +36,7 @@ from dotenv import load_dotenv
 
 from sheets_db import SoulRebootDB
 from notifier import notify_success, notify_error
+from youtube_analytics import YouTubeAnalytics, analyze_comments_sentiment
 
 # .envファイルから環境変数を読み込む（プロジェクトルートにある場合）
 load_dotenv()
@@ -212,20 +213,130 @@ relevance_scoreは「AIと記憶をテーマにした青春物語」への関連
 
 
 # ===================================================================
+# STEP 1.5: YouTube Analytics 収集
+# ===================================================================
+
+def step_collect_analytics(db: SoulRebootDB, config: dict) -> dict:
+    """
+    YouTube Data API v3 で直近エピソードの視聴データ・コメントを収集し、
+    スプレッドシートに書き込む。
+    YouTube URLがまだない場合（初期エピソード）はスキップ。
+    """
+    print("\n[ANALYTICS] STEP 1.5: YouTube視聴データ・コメント収集...")
+
+    fetch_limit = safe_int(config.get("ANALYTICS_FETCH_EPISODES", 3), 3)
+    recent_episodes = db.get_video_ids_for_recent_episodes(limit=fetch_limit)
+
+    if not recent_episodes:
+        print("  → YouTube公開済みエピソードなし。スキップします。")
+        return {"episodes_fetched": 0, "comments_collected": 0}
+
+    print(f"  → 対象エピソード: {len(recent_episodes)}話")
+
+    try:
+        yt = YouTubeAnalytics()
+    except Exception as e:
+        print(f"  [WARN] YouTube API認証に失敗: {e}")
+        print("  → Analytics収集をスキップします。")
+        return {"episodes_fetched": 0, "comments_collected": 0}
+
+    # 動画統計の取得
+    video_ids = [ep["video_id"] for ep in recent_episodes]
+    stats = yt.get_video_stats(video_ids)
+    stats_map = {s["video_id"]: s for s in stats}
+
+    # Analyticsシートに書き込む
+    analytics_rows = []
+    for ep in recent_episodes:
+        vid = ep["video_id"]
+        s = stats_map.get(vid, {})
+        views = s.get("views", 0)
+        likes = s.get("likes", 0)
+        comments_count = s.get("comments", 0)
+        engagement = round((likes + comments_count) / views * 100, 2) if views > 0 else 0
+
+        # 前日比の計算
+        prev_analytics = db.get_latest_analytics(limit=20)
+        prev_views = 0
+        for pa in prev_analytics:
+            if str(pa.get("話数", "")) == str(ep["episode_number"]):
+                prev_views = int(pa.get("視聴回数", 0)) if pa.get("視聴回数") else 0
+                break
+
+        analytics_rows.append({
+            "話数": ep["episode_number"],
+            "video_id": vid,
+            "視聴回数": views,
+            "いいね数": likes,
+            "コメント数": comments_count,
+            "エンゲージメント率": engagement,
+            "前日比_視聴": views - prev_views,
+        })
+        print(f"  第{ep['episode_number']}話: 視聴{views} / いいね{likes} / コメント{comments_count}")
+
+    if analytics_rows:
+        db.append_analytics(analytics_rows)
+
+    # コメント収集と感情分析
+    existing_ids = db.get_existing_comment_ids()
+    total_new_comments = 0
+
+    for ep in recent_episodes:
+        raw_comments = yt.get_comments(ep["video_id"], max_results=50)
+        # 重複除外
+        new_comments = [c for c in raw_comments if c.get("comment_id") not in existing_ids]
+
+        if not new_comments:
+            continue
+
+        print(f"  第{ep['episode_number']}話: 新規コメント{len(new_comments)}件")
+
+        # Claude Opus で感情分析
+        analyzed = analyze_comments_sentiment(new_comments)
+
+        # Commentsシート用にカラム名をマッピング
+        sheet_comments = []
+        for c in analyzed:
+            sheet_comments.append({
+                "コメントID": c.get("comment_id", ""),
+                "対象話数": ep["episode_number"],
+                "投稿者名": c.get("author", ""),
+                "コメント本文": c.get("text", ""),
+                "いいね数": c.get("like_count", 0),
+                "AI感情分析": c.get("ai_sentiment", ""),
+                "採用スコア": c.get("adoption_score", 0),
+            })
+
+        added = db.append_comments_batch(sheet_comments)
+        total_new_comments += added
+        existing_ids.update(c.get("comment_id", "") for c in new_comments)
+
+    summary = {
+        "episodes_fetched": len(recent_episodes),
+        "comments_collected": total_new_comments,
+    }
+    print(f"  → 収集完了: {summary['episodes_fetched']}話分 / 新規コメント{summary['comments_collected']}件")
+    return summary
+
+
+# ===================================================================
 # STEP 2: コメントスコアリング
 # ===================================================================
 
 def step_score_comments(db: SoulRebootDB) -> list[dict]:
     """
-    Commentsシートの未処理コメントにAIスコアリングを行い、
-    上位3件を「採用予定」とマークして返す。
-    （実際のYouTubeコメント収集はYouTube Data APIで別途実装）
+    Commentsシートの未処理コメントから採用スコアの高い上位3件を選択し、
+    ADOPTEDにマークして返す。
     """
     print("\n[COMMENTS] STEP 2: コメントスコアリング...")
 
     top_comments = db.get_top_pending_comments(limit=3)
     if top_comments:
         print(f"  → 採用候補コメント: {len(top_comments)}件")
+        # 採用コメントをADOPTEDにマーク
+        adopted_ids = [str(c.get("コメントID", "")) for c in top_comments if c.get("コメントID")]
+        if adopted_ids:
+            db.mark_comments_adopted(adopted_ids)
     else:
         print("  → 採用候補コメントなし（初回または未収集）")
 
@@ -250,6 +361,7 @@ def step_architect(db: SoulRebootDB, config: dict,
     foreshadowing_context = db.build_open_foreshadowing_context()
     past_cliffhangers = db.build_past_cliffhangers_context()
     story_progress = db.build_story_progress_context()
+    analytics_context = db.build_analytics_context()
 
     # ニュースサマリー
     news_context = "今日のニュース（参考）:\n"
@@ -296,6 +408,8 @@ def step_architect(db: SoulRebootDB, config: dict,
 {news_context}
 
 {comment_context}
+
+{analytics_context}
 
 ---
 ## 出力フォーマット（JSON形式で出力してください）
@@ -501,6 +615,89 @@ def step_editor(db: SoulRebootDB, episode_number: int,
 
 
 # ===================================================================
+# 視聴者フィードバック → パラメータ微調整
+# ===================================================================
+
+def _calculate_viewer_delta(db: SoulRebootDB) -> dict | None:
+    """
+    直近のアナリティクスとコメント傾向からパラメータ微調整値を計算する。
+    各パラメータの調整幅は ±3 以内（Architectの判断が主、視聴者は補助）。
+    """
+    analytics = db.get_latest_analytics(limit=1)
+    if not analytics:
+        return None
+
+    latest = analytics[0]
+    engagement = float(latest.get("エンゲージメント率", 0)) if latest.get("エンゲージメント率") else 0
+
+    # コメント感情の集計（直近50件）
+    from sheets_db import SHEET_COMMENTS
+    ws = db._sheet(SHEET_COMMENTS)
+    records = ws.get_all_records()
+    recent_sentiments = [r.get("AI感情分析", "") for r in records[-50:] if r.get("AI感情分析")]
+
+    if not recent_sentiments:
+        # エンゲージメントのみで判断
+        if engagement >= 10:
+            return {"trust": 0, "awakening": 0, "record": 1, "reason": f"高エンゲージメント{engagement:.1f}%"}
+        return None
+
+    from collections import Counter
+    counts = Counter(recent_sentiments)
+    total = sum(counts.values())
+
+    support_ratio = counts.get("応援", 0) / total  # 応援率
+    criticism_ratio = counts.get("批判", 0) / total  # 批判率
+    theory_ratio = counts.get("考察", 0) / total  # 考察率
+
+    trust_delta = 0
+    awakening_delta = 0
+    record_delta = 0
+    reasons = []
+
+    # 高エンゲージメント → 記録度 +1〜2
+    if engagement >= 10:
+        record_delta += 2
+        reasons.append(f"エンゲージメント{engagement:.1f}%")
+    elif engagement >= 5:
+        record_delta += 1
+
+    # 応援多い → 信頼度 +1〜2
+    if support_ratio >= 0.5:
+        trust_delta += 2
+        reasons.append(f"応援{support_ratio*100:.0f}%")
+    elif support_ratio >= 0.3:
+        trust_delta += 1
+
+    # 批判多い → 覚醒度 +1〜2（緊張感の反映）
+    if criticism_ratio >= 0.3:
+        awakening_delta += 2
+        reasons.append(f"批判{criticism_ratio*100:.0f}%")
+    elif criticism_ratio >= 0.15:
+        awakening_delta += 1
+
+    # 考察多い → 覚醒度 +1（物語への深い関与）
+    if theory_ratio >= 0.3:
+        awakening_delta += 1
+        reasons.append(f"考察{theory_ratio*100:.0f}%")
+
+    # 上限クリップ（±3）
+    trust_delta = max(-3, min(3, trust_delta))
+    awakening_delta = max(-3, min(3, awakening_delta))
+    record_delta = max(-3, min(3, record_delta))
+
+    if trust_delta == 0 and awakening_delta == 0 and record_delta == 0:
+        return None
+
+    return {
+        "trust": trust_delta,
+        "awakening": awakening_delta,
+        "record": record_delta,
+        "reason": ", ".join(reasons) if reasons else "視聴者反応",
+    }
+
+
+# ===================================================================
 # STEP 5: 伏線・パラメータ・記憶の更新
 # ===================================================================
 
@@ -527,18 +724,29 @@ def step_update_metadata(db: SoulRebootDB, episode_number: int, plot: dict) -> N
             resolution_note=res.get("resolution_note", ""),
         )
 
-    # パラメータ更新
+    # パラメータ更新（Architectの判断 + 視聴者フィードバック微調整）
     prev = db.get_latest_parameters()
     delta = plot.get("parameter_delta", {})
     new_trust = safe_int(prev.get("信頼度"), 20) + safe_int(delta.get("trust_delta"), 0)
     new_awakening = safe_int(prev.get("覚醒度"), 0) + safe_int(delta.get("awakening_delta"), 0)
     new_record = safe_int(prev.get("記録度"), 5) + safe_int(delta.get("record_delta"), 0)
+
+    # 視聴者フィードバックによる微調整（各パラメータ最大±3）
+    viewer_delta = _calculate_viewer_delta(db)
+    if viewer_delta:
+        new_trust += viewer_delta.get("trust", 0)
+        new_awakening += viewer_delta.get("awakening", 0)
+        new_record += viewer_delta.get("record", 0)
+        trigger_suffix = f" + 視聴者反応({viewer_delta.get('reason', '')})"
+    else:
+        trigger_suffix = ""
+
     db.append_parameters(
         episode_number=episode_number,
         trust=new_trust,
         awakening=new_awakening,
         record=new_record,
-        trigger_event=delta.get("trigger_event", ""),
+        trigger_event=delta.get("trigger_event", "") + trigger_suffix,
     )
 
     # L2記憶更新（上で計算済みの値を再利用し、APIコールを節約）
@@ -562,7 +770,8 @@ def step_update_metadata(db: SoulRebootDB, episode_number: int, plot: dict) -> N
 # STEP 6: Config更新・完了レポート
 # ===================================================================
 
-def step_finalize(db: SoulRebootDB, episode_number: int, plot: dict, advance_episode: bool = True) -> None:
+def step_finalize(db: SoulRebootDB, episode_number: int, plot: dict,
+                  advance_episode: bool = True, analytics_summary: dict | None = None) -> None:
     """次の話数をConfigに書き込み、完了レポートを出力する"""
     print(f"\n[FINALIZE] STEP 6: 完了処理...")
 
@@ -582,6 +791,8 @@ def step_finalize(db: SoulRebootDB, episode_number: int, plot: dict, advance_epi
     print(f"   タイトル: {_safe(str(plot.get('title', '')))}")
     print(f"   感情曲線: {_safe(str(plot.get('emotional_curve', '')))}")
     print(f"   クリフハンガー: {_safe(plot.get('cliffhanger', ''), 40)}...")
+    if analytics_summary and analytics_summary.get("episodes_fetched", 0) > 0:
+        print(f"   Analytics: {analytics_summary['episodes_fetched']}話分収集 / 新規コメント{analytics_summary.get('comments_collected', 0)}件")
     print(f"\n[次のアクション] スプレッドシートを確認してください:")
     print(f"   1. [Episodes] タイトル・プロットの確認と修正")
     print(f"   2. [Scripts] 台本の確認（approved=TRUEに変更で承認）")
@@ -642,6 +853,8 @@ def main():
     try:
         current_step = "ニュース収集"
         news = step_collect_news(db, config)
+        current_step = "YouTube Analytics収集"
+        analytics_summary = step_collect_analytics(db, config)
         current_step = "コメントスコアリング"
         top_comments = step_score_comments(db)
         current_step = "プロット生成 (Architect)"
@@ -653,7 +866,7 @@ def main():
         current_step = "メタデータ更新"
         step_update_metadata(db, episode_number, plot)
         current_step = "完了処理"
-        step_finalize(db, episode_number, plot, advance_episode=not args.force)
+        step_finalize(db, episode_number, plot, advance_episode=not args.force, analytics_summary=analytics_summary)
         # 台本の総文字数（セリフ・地の文のみ集計）
         script_char_count = sum(
             len(line.get("セリフ・地の文", "")) for line in script_lines

@@ -35,7 +35,11 @@ CREDENTIALS_FILE = BASE_DIR / "credentials.json"
 YOUTUBE_TOKEN_FILE = BASE_DIR / "youtube_token.json"
 
 # YouTube Data API v3 のスコープ
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/youtube.force-ssl",
+]
 
 # デフォルト設定
 DEFAULT_CATEGORY_ID = "24"  # Entertainment

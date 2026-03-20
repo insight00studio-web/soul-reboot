@@ -35,6 +35,7 @@ SHEET_ASSETS        = "🎵 Assets"
 SHEET_NEWS          = "📰 News"
 SHEET_MEMORY_L2     = "📖 Memory_L2"
 SHEET_CONFIG        = "⚙️ Config"
+SHEET_ANALYTICS     = "📈 Analytics"
 
 
 def _safe_int(val, default: int = 0) -> int:
@@ -515,4 +516,142 @@ class SoulRebootDB:
                 f"第{item.get('追加話数', '')}話追加〜第{item.get('回収予定話数', '')}話回収予定: "
                 f"{item.get('伏線内容', '')}"
             )
+        return "\n".join(lines)
+
+    # -------------------------------------------------------------------
+    # 📈 Analytics
+    # -------------------------------------------------------------------
+
+    def append_analytics(self, stats: list[dict]) -> None:
+        """Analyticsシートに視聴統計を追記する"""
+        ws = self._sheet(SHEET_ANALYTICS)
+        headers = ws.row_values(1)
+        rows = []
+        for s in stats:
+            s.setdefault("収集日", date.today().isoformat())
+            rows.append([str(s.get(h, "")) for h in headers])
+        if rows:
+            ws.append_rows(rows)
+            print(f"DONE: Analytics追記: {len(rows)}件")
+
+    def get_latest_analytics(self, limit: int = 5) -> list[dict]:
+        """直近N話分の最新アナリティクスを返す（各話の最新収集日のみ）"""
+        ws = self._sheet(SHEET_ANALYTICS)
+        records = ws.get_all_records()
+        if not records:
+            return []
+        # 話数ごとに最新の収集日のレコードだけを残す
+        latest = {}
+        for r in records:
+            ep = str(r.get("話数", ""))
+            if ep and (ep not in latest or r.get("収集日", "") >= latest[ep].get("収集日", "")):
+                latest[ep] = r
+        # 話数の降順でソートし、limit件返す
+        sorted_records = sorted(latest.values(), key=lambda x: _safe_int(x.get("話数", 0)), reverse=True)
+        return sorted_records[:limit]
+
+    def get_video_ids_for_recent_episodes(self, limit: int = 3) -> list[dict]:
+        """YouTube_URLが設定されている直近N話の話数とvideo_idを返す"""
+        import re
+        ws = self._sheet(SHEET_EPISODES)
+        records = ws.get_all_records()
+        result = []
+        for r in reversed(records):
+            url = str(r.get("YouTube_URL", ""))
+            if not url:
+                continue
+            video_id = None
+            match = re.search(r'youtu\.be/([a-zA-Z0-9_-]{11})', url)
+            if match:
+                video_id = match.group(1)
+            else:
+                match = re.search(r'[?&]v=([a-zA-Z0-9_-]{11})', url)
+                if match:
+                    video_id = match.group(1)
+                else:
+                    match = re.search(r'youtube\.com/video/([a-zA-Z0-9_-]{11})', url)
+                    if match:
+                        video_id = match.group(1)
+            if video_id:
+                result.append({
+                    "episode_number": _safe_int(r.get("話数", 0)),
+                    "video_id": video_id,
+                    "title": r.get("タイトル案", "") or r.get("確定タイトル", ""),
+                })
+            if len(result) >= limit:
+                break
+        return result
+
+    def get_existing_comment_ids(self) -> set[str]:
+        """Commentsシートに既に登録済みのコメントIDセットを返す（重複防止用）"""
+        ws = self._sheet(SHEET_COMMENTS)
+        records = ws.get_all_records()
+        return {str(r.get("コメントID", "")) for r in records if r.get("コメントID")}
+
+    def append_comments_batch(self, comments: list[dict]) -> int:
+        """コメントを一括追加する（既存ID重複チェック済み前提）"""
+        if not comments:
+            return 0
+        ws = self._sheet(SHEET_COMMENTS)
+        headers = ws.row_values(1)
+        rows = []
+        for c in comments:
+            c.setdefault("収集日", date.today().isoformat())
+            c.setdefault("採用ステータス", "PENDING")
+            c.setdefault("手動上書き", "FALSE")
+            rows.append([str(c.get(h, "")) for h in headers])
+        if rows:
+            ws.append_rows(rows)
+            print(f"DONE: Comments一括追記: {len(rows)}件")
+        return len(rows)
+
+    def mark_comments_adopted(self, comment_ids: list[str]) -> None:
+        """指定コメントIDの採用ステータスをADOPTEDに更新する"""
+        if not comment_ids:
+            return
+        ws = self._sheet(SHEET_COMMENTS)
+        all_values = ws.get_all_values()
+        if not all_values:
+            return
+        headers = all_values[0]
+        id_col = headers.index("コメントID") if "コメントID" in headers else -1
+        status_col = headers.index("採用ステータス") if "採用ステータス" in headers else -1
+        if id_col < 0 or status_col < 0:
+            return
+        id_set = set(comment_ids)
+        for i, row in enumerate(all_values[1:], start=2):
+            if len(row) > id_col and row[id_col] in id_set:
+                ws.update_cell(i, status_col + 1, "ADOPTED")
+        print(f"DONE: {len(comment_ids)}件のコメントをADOPTEDに更新")
+
+    def build_analytics_context(self) -> str:
+        """直近エピソードのアナリティクスサマリーを返す（Architectプロンプト埋め込み用）"""
+        analytics = self.get_latest_analytics(limit=5)
+        if not analytics:
+            return "=== 視聴者データ ===\n  （まだデータがありません）"
+
+        lines = ["=== 直近エピソードの視聴者反応 ==="]
+        for a in analytics:
+            ep = a.get("話数", "?")
+            views = _safe_int(a.get("視聴回数", 0))
+            likes = _safe_int(a.get("いいね数", 0))
+            comments = _safe_int(a.get("コメント数", 0))
+            engagement = float(a.get("エンゲージメント率", 0)) if a.get("エンゲージメント率") else 0
+            lines.append(
+                f"  第{ep}話: 視聴{views}回 / いいね{likes} / コメント{comments} / "
+                f"エンゲージメント率{engagement:.1f}%"
+            )
+
+        # コメント傾向サマリー（最新50件の感情分析から）
+        ws = self._sheet(SHEET_COMMENTS)
+        records = ws.get_all_records()
+        if records:
+            sentiments = [r.get("AI感情分析", "") for r in records[-50:] if r.get("AI感情分析")]
+            if sentiments:
+                from collections import Counter
+                counts = Counter(sentiments)
+                total = sum(counts.values())
+                trend_parts = [f"{s}{c*100//total}%" for s, c in counts.most_common(4)]
+                lines.append(f"  コメント傾向: {' / '.join(trend_parts)}")
+
         return "\n".join(lines)

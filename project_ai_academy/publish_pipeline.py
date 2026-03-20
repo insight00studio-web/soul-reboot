@@ -196,6 +196,10 @@ def _build_description(episode_number: int, title: str, cliffhanger: str) -> str
         lines.append("")
     lines.extend([
         "---",
+        "この動画はAI技術（Gemini / Claude）を活用して制作しています。",
+        "映像・音声はAI生成、ストーリーはAIが自律的に生成し人間が監修しています。",
+        "This video features AI-generated visuals, voices, and story content.",
+        "",
         "#SoulReboot #AI生成アニメ #連載 #物語",
         "",
         "チャンネル登録・コメントお願いします！",

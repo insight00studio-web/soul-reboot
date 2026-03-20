@@ -35,6 +35,9 @@ jobs:
           echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" | base64 -d > project_ai_academy/credentials.json
           echo "${{ secrets.GOOGLE_TOKEN_JSON }}" | base64 -d > project_ai_academy/token.json
 
+      - name: Setup YouTube credentials (Analytics読み取り用)
+        run: echo "${{ secrets.YOUTUBE_TOKEN_JSON }}" | base64 -d > project_ai_academy/youtube_token.json
+
       - name: Setup environment
         run: |
           echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > project_ai_academy/.env

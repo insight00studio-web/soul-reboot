@@ -40,7 +40,7 @@ class AssetGenerator:
         self.char_profiles = {
             "SHINJI": "16-year-old high school boy, energetic, warm, friendly voice",
             "NARRATOR": "Mature narrator, calm and professional narration",
-            "SYSTEM": "Speak at a perfectly steady, mechanical pace with zero emotion. Every word delivered with flat, uniform rhythm — no pauses, no emphasis, no inflection. Like a machine reading data aloud.",
+            "SYSTEM": "Mature narrator, calm and professional narration",
         }
         
         # 保存先ベースディレクトリ

@@ -115,11 +115,8 @@ class YouTubeUploader:
         if tags is None:
             tags = DEFAULT_TAGS.copy()
 
-        # プライバシー設定
-        if publish_at:
-            privacy_status = "private"
-        else:
-            privacy_status = "public"
+        # プライバシー設定（常に非公開でアップロード）
+        privacy_status = "private"
 
         body = {
             "snippet": {
@@ -136,8 +133,8 @@ class YouTubeUploader:
             },
         }
 
-        if publish_at:
-            body["status"]["publishAt"] = publish_at
+        # publish_at は無視し、常に非公開のままアップロード
+        # 公開は手動で行う
 
         # Resumable upload
         media = MediaFileUpload(

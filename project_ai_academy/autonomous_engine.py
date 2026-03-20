@@ -393,7 +393,7 @@ def step_writer(db: SoulRebootDB, _config: dict, episode_number: int, plot: dict
     "line_text": "セリフまたは地の文",
     "tone": "感情トーン（例: 静か, 毒舌, 震え, 叫び, 悲しみ）",
     "audio_file_path": "",
-    "approved": "FALSE",
+    "approved": "TRUE",
     "notes": ""
   }}
 ]

@@ -140,7 +140,7 @@ def call_opus(prompt: str, system_prompt: str = "",
     )
 
     if result.returncode != 0:
-        raise RuntimeError(f"Claude CLI error (rc={result.returncode}): {result.stderr[:500]}")
+        raise RuntimeError(f"Claude CLI error (rc={result.returncode}): stderr={result.stderr[:300]} stdout={result.stdout[:300]}")
 
     raw = result.stdout.strip()
     print(f"  [OPUS] 応答受信: {len(raw)}文字")

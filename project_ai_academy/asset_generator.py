@@ -71,12 +71,6 @@ class AssetGenerator:
             7: "short sleeves, summer dress, t-shirt",
         }
 
-        # --- IMAGE GENERATION: ネガティブプロンプト（テキスト指示として埋め込む） ---
-        self.negative_prompt_text = (
-            "Avoid: multiple faces, extra limbs, deformed hands, blurry, low quality, "
-            "watermark, text, different hairstyle than reference, different eye color than reference."
-        )
-
     def _get_nagisa_profile(self, awakening: int) -> str:
         """覚醒度に応じてナギサの声質プロファイルを返す"""
         if awakening <= 30:

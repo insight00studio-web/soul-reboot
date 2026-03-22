@@ -1,9 +1,12 @@
 import json
 import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).parent
 
 def update_memory(episode_id, summary, l1_details):
     # L2 update (History)
-    l2_path = 'c:/Users/uca-n/youtube/project_ai_academy/memory_l2.json'
+    l2_path = BASE_DIR / 'memory_l2.json'
     with open(l2_path, 'r', encoding='utf-8') as f:
         l2_data = json.load(f)
     
@@ -14,7 +17,7 @@ def update_memory(episode_id, summary, l1_details):
             json.dump(l2_data, f, ensure_ascii=False, indent=4)
 
     # L1 update (Recent sliding window)
-    l1_path = 'c:/Users/uca-n/youtube/project_ai_academy/memory_l1.json'
+    l1_path = BASE_DIR / 'memory_l1.json'
     with open(l1_path, 'r', encoding='utf-8') as f:
         l1_data = json.load(f)
     

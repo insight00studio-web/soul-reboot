@@ -1,5 +1,15 @@
 # Soul Reboot - GitHub Secret Token Update Script
-# Run this every evening before 23:00 JST
+# Run this every day before JST 01:00
+
+# .env からスプレッドシートIDを自動読み込み
+$envFile = "$PSScriptRoot\project_ai_academy\.env"
+if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match '^\s*([^#][^=]+)=(.*)$') {
+            [System.Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), "Process")
+        }
+    }
+}
 
 $credsPath = "$env:USERPROFILE\.claude\.credentials.json"
 
@@ -76,7 +86,7 @@ print('Token refresh OK')
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Uploading token.json to GitHub Secret..." -ForegroundColor Yellow
-        $googleToken = Get-Content $googleTokenPath -Raw
+        $googleToken = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((Get-Content $googleTokenPath -Raw)))
         $googleToken | gh secret set GOOGLE_TOKEN_JSON --repo insight00studio-web/soul-reboot --body -
         if ($LASTEXITCODE -eq 0) {
             Write-Host "OK: GOOGLE_TOKEN_JSON updated." -ForegroundColor Green
@@ -90,6 +100,6 @@ print('Token refresh OK')
 }
 
 Write-Host ""
-Write-Host "All done! Phase A runs automatically at 00:00 JST." -ForegroundColor Green
+Write-Host "All done! Phase A runs automatically at 01:00 JST." -ForegroundColor Green
 Write-Host ""
 Read-Host "Press Enter to exit"

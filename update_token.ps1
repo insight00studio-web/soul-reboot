@@ -87,7 +87,7 @@ print('Token refresh OK')
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Uploading token.json to GitHub Secret..." -ForegroundColor Yellow
         $googleToken = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((Get-Content $googleTokenPath -Raw)))
-        $googleToken | gh secret set GOOGLE_TOKEN_JSON --repo insight00studio-web/soul-reboot --body -
+        gh secret set GOOGLE_TOKEN_JSON --repo insight00studio-web/soul-reboot --body $googleToken
         if ($LASTEXITCODE -eq 0) {
             Write-Host "OK: GOOGLE_TOKEN_JSON updated." -ForegroundColor Green
         } else {

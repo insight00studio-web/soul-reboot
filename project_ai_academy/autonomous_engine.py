@@ -349,7 +349,8 @@ def step_score_comments(db: SoulRebootDB) -> list[dict]:
 
 def step_architect(db: SoulRebootDB, config: dict,
                    episode_number: int, news: list[dict],
-                   top_comments: list[dict]) -> dict:
+                   top_comments: list[dict],
+                   quality_feedback: str = "") -> dict:
     """
     ArchitectプロンプトにL2記憶・伏線・ニュース・コメントを注入し、
     Geminiにプロットを生成させ、Episodesシートに書き込む。
@@ -425,7 +426,13 @@ def step_architect(db: SoulRebootDB, config: dict,
 {comment_context}
 
 {analytics_context}
+{f"""
+---
+## 品質フィードバック（前回のEditor評価）
 
+前回の台本が品質基準を満たしませんでした。以下の問題点を必ず解消したプロットを生成してください:
+{quality_feedback}
+""" if quality_feedback else ""}
 ---
 ## 出力フォーマット（JSON形式で出力してください）
 
@@ -912,7 +919,20 @@ def main():
         current_step = "台本生成 (Writer)"
         script_lines = step_writer(db, config, episode_number, plot)
         current_step = "台本監修 (Editor)"
-        script_lines = step_editor(db, episode_number, plot, script_lines)
+        QUALITY_GATE_THRESHOLD = 300
+        MAX_RETRY = 1
+        for retry in range(MAX_RETRY + 1):
+            script_lines, quality_score = step_editor(db, episode_number, plot, script_lines)
+            total = quality_score.get("total", 999)
+            if total >= QUALITY_GATE_THRESHOLD or retry >= MAX_RETRY:
+                if total < QUALITY_GATE_THRESHOLD:
+                    print(f"  [QUALITY GATE] スコア{total}点 < {QUALITY_GATE_THRESHOLD}点。リトライ上限に達したため続行。")
+                break
+            print(f"  [QUALITY GATE] スコア{total}点 < {QUALITY_GATE_THRESHOLD}点。Architectから再生成します（リトライ {retry+1}/{MAX_RETRY}）")
+            issues_text = "\n".join(quality_score.get("issues", []))
+            plot = step_architect(db, config, episode_number, news, top_comments,
+                                  quality_feedback=issues_text)
+            script_lines = step_writer(db, config, episode_number, plot)
         current_step = "メタデータ更新"
         step_update_metadata(db, episode_number, plot)
         current_step = "完了処理"

@@ -505,6 +505,68 @@ class SoulRebootDB:
                 lines.append(f"  第{ep_num}話「{title}」: {obj}")
         return "\n".join(lines)
 
+    def build_past_structures_context(self) -> str:
+        """過去全話の構造パターン・掛け合いパターン一覧を返す（重複防止用）"""
+        ws = self._sheet(SHEET_EPISODES)
+        records = ws.get_all_records()
+        if not records:
+            return "使用済み構造パターン: なし"
+        lines = ["=== 使用済み構造パターン・掛け合いパターン（直近3話と同じパターンは避けること） ==="]
+        for ep in records:
+            ep_num = ep.get("話数", "")
+            structure = ep.get("構造パターン", "")
+            comedy = ep.get("掛け合いパターン", "")
+            if ep_num and (structure or comedy):
+                lines.append(f"  第{ep_num}話: 構造={structure or '未記録'} / 掛け合い={comedy or '未記録'}")
+        return "\n".join(lines)
+
+    def build_dialogue_samples_context(self) -> str:
+        """直近2話の代表的なセリフを返す（文体重複検知用）"""
+        ws = self._sheet(SHEET_SCRIPTS)
+        records = ws.get_all_records()
+        if not records:
+            return "直近のセリフサンプル: なし"
+
+        # 話数でグルーピングし、直近2話を取得
+        episodes = {}
+        for r in records:
+            ep = str(r.get("話数", ""))
+            if ep:
+                episodes.setdefault(ep, []).append(r)
+
+        sorted_eps = sorted(episodes.keys(), key=lambda x: _safe_int(x), reverse=True)[:2]
+
+        lines = ["=== 直近のセリフサンプル（同じ言い回し・文体の繰り返しを避けること） ==="]
+        for ep_num in sorted_eps:
+            ep_lines = episodes[ep_num]
+            # ナギサとシンジのセリフから各3本ずつ抽出
+            nagisa_lines = [r.get("セリフ・地の文", "") for r in ep_lines
+                           if r.get("話者") == "NAGISA" and r.get("セリフ・地の文")][:3]
+            shinji_lines = [r.get("セリフ・地の文", "") for r in ep_lines
+                           if r.get("話者") == "SHINJI" and r.get("セリフ・地の文")][:3]
+            lines.append(f"第{ep_num}話:")
+            for s in nagisa_lines:
+                lines.append(f"  ナギサ「{s[:60]}」")
+            for s in shinji_lines:
+                lines.append(f"  シンジ「{s[:60]}」")
+        return "\n".join(lines)
+
+    def get_parameter_targets(self, episode_number: int) -> dict:
+        """ロードマップに基づくパラメータ目標レンジを返す"""
+        targets = {
+            (1, 10):   {"trust": (20, 50), "awakening": (0, 0)},
+            (11, 30):  {"trust": (50, 70), "awakening": (0, 15)},
+            (31, 50):  {"trust": (50, 70), "awakening": (15, 50)},
+            (51, 70):  {"trust": (30, 50), "awakening": (50, 75)},
+            (71, 85):  {"trust": (20, 30), "awakening": (75, 90)},
+            (86, 99):  {"trust": (10, 80), "awakening": (90, 100)},
+            (100, 100): {"trust": (0, 100), "awakening": (0, 100)},
+        }
+        for (start, end), target in targets.items():
+            if start <= episode_number <= end:
+                return target
+        return {"trust": (0, 100), "awakening": (0, 100)}
+
     def build_open_foreshadowing_context(self) -> str:
         """未回収の伏線一覧文字列を返す（プロンプト埋め込み用）"""
         items = self.get_open_foreshadowing()

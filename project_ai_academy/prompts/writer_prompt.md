@@ -48,15 +48,22 @@ Writerは以下のリストから `tone` を選択すること。リスト外の
 
 1. **朗読に最適化**: Gemini TTSによる音声合成を想定し、一文を短く（句読点を適切に）配置。
 2. **冒頭のフック**: 視聴者が動画を閉じないよう、最も衝撃的、あるいは謎めいたセリフや情景から開始。**第1話は「記録開始…」のシステムログから始めること。**
-3. **画像プロンプト**: `image_generation_spec.md` に基づき、詳細な英単語タグを指定。
-    - ナギサ: `1girl, master_nagisa, long black hair, sapphire blue eyes...`
-    - シンジ: `1boy, master_shinji, messy brown hair, black eyes...`
-    - 場所・時間・服装の指定を必ず含める。
-4. **キャラクターの笑いの構造**: ナギサとシンジの掛け合いで自然なクスっとした笑いを生む。
-    - ナギサが比喩・慣用句を字義通りに受け取り、シンジが感情論でツッコむ
-    - ナギサの毒舌の後に小さなデレが漏れ、シンジが食いつき、ナギサが即否定する
-    - ナギサの「根拠を求める」姿勢 vs シンジの「なんとなく」がすれ違う
-    - 水・雨の場面でナギサが謎の回避行動をとり、シンジが不思議がる
+3. **画像プロンプト**: Gemini Image Generation用の自然言語英語プロンプトを指定。**キャラクター一貫性のため以下のルールを厳守**:
+    - **キャラクター名を必ず明記**: シーンにナギサがいるなら `NAGISA` を、シンジがいるなら `SHINJI` を画像プロンプトに含めること（大文字）。これがないとマスター参照画像が適用されない。
+    - ナギサがいるシーン: `NAGISA, 1girl, long black hair, sapphire blue eyes, ...シーン描写...`
+    - シンジがいるシーン: `SHINJI, 1boy, messy brown hair, black eyes, ...シーン描写...`
+    - 両方いるシーン: `NAGISA and SHINJI, ...シーン描写...`
+    - **NARRATORの地の文でもキャラクターが映るシーンなら、画像プロンプトにキャラ名を含めること**
+    - 場所・時間帯・表情・ポーズの指定を必ず含める
+    - `detailed face, clear facial features` を常に含めること（顔なし画像の防止）
+4. **キャラクターの笑いの構造**: Architectが指定した `comedy_pattern` に従って掛け合いを書くこと。**毎話同じパターンにしない**。
+    - **A: 字義解釈型** — ナギサが比喩を文字通りに受け取り、シンジが感情論でツッコむ
+    - **B: 毒舌デレ型** — ナギサの毒舌→小さなデレ→シンジが食いつき→ナギサ即否定
+    - **C: 逆転型** — シンジが珍しく核心を突く発言をし、ナギサが言葉に詰まる
+    - **D: 沈黙型** — 会話が途切れ、沈黙のまま感情が伝わる（セリフではなく地の文で表現）
+    - **E: 共闘型** — 二人が同じ目的で動く中で自然にボケ・ツッコミが生まれる
+    - **F: すれ違い型** — 互いに別のことを考えながら会話し、噛み合わないのに成立する
+    - **G: 水回避型** — ナギサが水・雨を避ける伏線シーン
 5. **視覚的描写の一貫性**: セリフや地の文でキャラクターのアクセサリー（ブローチ・腕時計など）・小道具・特定の環境描写に言及した場合、**その要素を同シーンの `image_prompt` に必ず含めること**。ナレーターが「〜を持っていた」「〜が光っていた」と語る場面は特に注意。
 6. **TTSボイス**: `speaker` フィールドを正しく設定すること（NAGISA / SHINJI / NARRATOR / SYSTEM）。ボイスは自動割り当てされる。
 
@@ -69,7 +76,7 @@ Writerは以下のリストから `tone` を選択すること。リスト外の
   {
     "scene_number": 1,
     "scene_name": "シーン名（例: 昇降口・入学式前）",
-    "image_prompt": "1girl, nagisa, long black hair, blue school uniform, sad expression, looking at viewer, classroom, sunset lighting, cinematic, high quality",
+    "image_prompt": "NAGISA, 1girl, long black hair, sapphire blue eyes, detailed face, clear facial features, blue school uniform, sad expression, looking at viewer, classroom, sunset lighting, cinematic, high quality",
     "speaker": "NAGISA | SHINJI | NARRATOR | SYSTEM",
     "line_text": "セリフ、またはナレーションの本文を記述。朗読しやすく短く。",
     "tone": "感情トーン（上記リストから選択）",

@@ -362,6 +362,8 @@ def step_architect(db: SoulRebootDB, config: dict,
     past_cliffhangers = db.build_past_cliffhangers_context()
     story_progress = db.build_story_progress_context()
     analytics_context = db.build_analytics_context()
+    past_structures = db.build_past_structures_context()
+    dialogue_samples = db.build_dialogue_samples_context()
 
     # ニュースサマリー
     news_context = "今日のニュース（参考）:\n"
@@ -383,6 +385,14 @@ def step_architect(db: SoulRebootDB, config: dict,
         f"覚醒度:{params.get('覚醒度',0)} / 記録度:{params.get('記録度',5)}"
     )
 
+    # パラメータ目標レンジ
+    targets = db.get_parameter_targets(episode_number)
+    target_context = (
+        f"パラメータ目標レンジ（ロードマップ準拠）: "
+        f"信頼度:{targets['trust'][0]}〜{targets['trust'][1]} / "
+        f"覚醒度:{targets['awakening'][0]}〜{targets['awakening'][1]}"
+    )
+
     today = date.today().isoformat()
 
     full_prompt = f"""
@@ -396,6 +406,7 @@ def step_architect(db: SoulRebootDB, config: dict,
 - **フェーズ**: {config.get('PHASE', 'PHASE_1')}
 
 {param_context}
+{target_context}
 
 {l1_context}
 
@@ -404,6 +415,10 @@ def step_architect(db: SoulRebootDB, config: dict,
 {past_cliffhangers}
 
 {story_progress}
+
+{past_structures}
+
+{dialogue_samples}
 
 {news_context}
 
@@ -419,6 +434,9 @@ def step_architect(db: SoulRebootDB, config: dict,
   "title": "タイトル",
   "main_objective": "この話で達成すること",
   "emotional_curve": "例: 30→60→90",
+  "structure_type": "日常→異変→発見（使用済みリストにない型を選択）",
+  "comedy_pattern": "A: 字義解釈型（直近3話と異なるパターンを選択）",
+  "shinji_agency": "シンジが主体的に行う行動（受け身のみなら空文字）",
   "plot_summary": {{
     "introduction": "導入（3〜4文）",
     "development": "展開（3〜4文）",
@@ -461,6 +479,8 @@ def step_architect(db: SoulRebootDB, config: dict,
         "感情曲線": plot.get("emotional_curve", ""),
         "プロット要約": json.dumps(plot.get("plot_summary", {}), ensure_ascii=False),
         "クリフハンガー": plot.get("cliffhanger", ""),
+        "構造パターン": plot.get("structure_type", ""),
+        "掛け合いパターン": plot.get("comedy_pattern", ""),
         "ステータス": "PLANNED",
         "YouTube_URL": "",
         "メモ": "",
@@ -545,10 +565,11 @@ def step_writer(db: SoulRebootDB, _config: dict, episode_number: int, plot: dict
 # ===================================================================
 
 def step_editor(db: SoulRebootDB, episode_number: int,
-                plot: dict, script_lines: list[dict]) -> list[dict]:
+                plot: dict, script_lines: list[dict]) -> tuple[list[dict], dict]:
     """
     Opus 4.6がWriter（Gemini）の台本を監修・編集し、
     修正版でスプレッドシートを上書きする。
+    品質スコアも返す（Quality Gate用）。
     """
     print(f"\n[EDITOR] STEP 4.5: Opus 4.6 - 第{episode_number}話台本監修...")
 
@@ -572,46 +593,75 @@ def step_editor(db: SoulRebootDB, episode_number: int,
 ---
 ## 出力フォーマット
 
-修正後の台本を、元と同じJSON配列形式で出力してください。
+以下のJSON形式で出力してください。品質スコアと修正後の台本の両方を含めること。
 変更がなくても全行を出力してください。
 
 ```json
-[
-  {{
-    "シーン番号": 1,
-    "シーン名": "シーン名",
-    "画像プロンプト": "英語プロンプト",
-    "話者": "NAGISA | SHINJI | NARRATOR | SYSTEM",
-    "セリフ・地の文": "セリフまたは地の文",
-    "感情トーン": "トーン",
-    "音声キャラ": "Despina | Orus | Charon | Kore",
-    "音声ファイルパス": "",
-    "notes": "変更理由（変更した行のみ）"
-  }}
-]
+{{
+  "quality_score": {{
+    "character_consistency": 0,
+    "structure_variety": 0,
+    "comedy_execution": 0,
+    "shinji_agency": 0,
+    "parameter_alignment": 0,
+    "total": 0,
+    "issues": []
+  }},
+  "edited_script": [
+    {{
+      "シーン番号": 1,
+      "シーン名": "シーン名",
+      "画像プロンプト": "英語プロンプト（キャラ名NAGISA/SHINJIを必ず含める、detailed face, clear facial features）",
+      "話者": "NAGISA | SHINJI | NARRATOR | SYSTEM",
+      "セリフ・地の文": "セリフまたは地の文",
+      "感情トーン": "トーン",
+      "音声キャラ": "Despina | Orus | Charon | Kore",
+      "音声ファイルパス": "",
+      "notes": "変更理由（変更した行のみ）"
+    }}
+  ]
+}}
 ```
 """
 
     edited = call_opus(full_prompt)
 
     if isinstance(edited, str):
-        # テキストで返ってきた場合、JSON部分の再抽出を試みる
         cleaned = re.sub(r',\s*([\]}])', r'\1', edited)
         edited = json.loads(cleaned)
 
-    if not isinstance(edited, list) or len(edited) == 0:
+    # 新フォーマット（quality_score + edited_script）のパース
+    quality_score = {}
+    if isinstance(edited, dict) and "edited_script" in edited:
+        quality_score = edited.get("quality_score", {})
+        edited_lines = edited.get("edited_script", [])
+    elif isinstance(edited, list):
+        # 旧フォーマット互換（配列のみ返ってきた場合）
+        edited_lines = edited
+        quality_score = {"total": 999, "issues": []}
+    else:
         print("  WARN: Editor応答が不正（元の台本を維持）")
-        return script_lines
+        return script_lines, {"total": 0, "issues": ["Editor応答パースエラー"]}
+
+    if not isinstance(edited_lines, list) or len(edited_lines) == 0:
+        print("  WARN: Editor応答の台本が空（元の台本を維持）")
+        return script_lines, {"total": 0, "issues": ["台本が空"]}
 
     # 変更箇所のサマリーを表示
-    changed_count = sum(1 for line in edited if line.get("notes", ""))
-    print(f"  → {len(edited)}行中 {changed_count}行を修正")
+    changed_count = sum(1 for line in edited_lines if line.get("notes", ""))
+    total_score = safe_int(quality_score.get("total"), 0)
+    issues = quality_score.get("issues", [])
+    print(f"  → {len(edited_lines)}行中 {changed_count}行を修正")
+    print(f"  → 品質スコア: {total_score}/500")
+    if issues:
+        for issue in issues:
+            print(f"    - {issue}")
 
     # スプレッドシートを上書き
-    db.replace_script_lines(episode_number, edited)
+    db.replace_script_lines(episode_number, edited_lines)
     print(f"  → スプレッドシート更新完了")
 
-    return edited
+    return edited_lines, quality_score
 
 
 # ===================================================================

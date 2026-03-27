@@ -120,6 +120,7 @@ def call_opus(prompt: str, system_prompt: str = "",
     """
     Claude Code CLI経由でOpus 4.6を呼び出す。
     JSONブロックが含まれていればパースして返す。なければテキストを返す。
+    529 Overloadedエラーは最大3回リトライ（60秒待機）。
     """
     cmd = ["claude", "-p", "--output-format", "text", "--model", "claude-opus-4-6"]
     if system_prompt:
@@ -128,19 +129,33 @@ def call_opus(prompt: str, system_prompt: str = "",
     # Claude Codeのネスト防止を回避するため、CLAUDECODE環境変数を除去
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
 
-    print(f"  [OPUS] Claude Opus 4.6 呼び出し中...")
-    result = subprocess.run(
-        cmd,
-        input=prompt,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        encoding="utf-8",
-        env=env,
-    )
+    max_retries = 3
+    retry_wait = 60  # seconds
+    for attempt in range(max_retries + 1):
+        print(f"  [OPUS] Claude Opus 4.6 呼び出し中..." + (f" (リトライ {attempt}/{max_retries})" if attempt > 0 else ""))
+        result = subprocess.run(
+            cmd,
+            input=prompt,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            env=env,
+        )
 
-    if result.returncode != 0:
-        raise RuntimeError(f"Claude CLI error (rc={result.returncode}): stderr={result.stderr[:300]} stdout={result.stdout[:300]}")
+        if result.returncode == 0:
+            break
+
+        stdout_preview = result.stdout[:300]
+        stderr_preview = result.stderr[:300]
+        # 529 Overloaded は一時的なサーバー過負荷 → リトライ
+        if "529" in stdout_preview or "overloaded_error" in stdout_preview:
+            if attempt < max_retries:
+                print(f"  [OPUS] 529 Overloaded。{retry_wait}秒後にリトライします...")
+                import time as _time
+                _time.sleep(retry_wait)
+                continue
+        raise RuntimeError(f"Claude CLI error (rc={result.returncode}): stderr={stderr_preview} stdout={stdout_preview}")
 
     raw = result.stdout.strip()
     print(f"  [OPUS] 応答受信: {len(raw)}文字")

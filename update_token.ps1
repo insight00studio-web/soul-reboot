@@ -93,6 +93,21 @@ print('Token refresh OK')
         } else {
             Write-Host "ERROR: GOOGLE_TOKEN_JSON update failed." -ForegroundColor Red
         }
+
+        # YouTube トークンも更新
+        $youtubeTokenPath = "$PSScriptRoot\project_ai_academy\youtube_token.json"
+        if (Test-Path $youtubeTokenPath) {
+            Write-Host "Uploading youtube_token.json to GitHub Secret..." -ForegroundColor Yellow
+            $youtubeToken = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((Get-Content $youtubeTokenPath -Raw)))
+            gh secret set YOUTUBE_TOKEN_JSON --repo insight00studio-web/soul-reboot --body $youtubeToken
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "OK: YOUTUBE_TOKEN_JSON updated." -ForegroundColor Green
+            } else {
+                Write-Host "ERROR: YOUTUBE_TOKEN_JSON update failed." -ForegroundColor Red
+            }
+        } else {
+            Write-Host "WARN: youtube_token.json not found. YOUTUBE_TOKEN_JSON not updated." -ForegroundColor Yellow
+        }
     } else {
         Write-Host "ERROR: Google token refresh failed. Re-authentication may be required." -ForegroundColor Red
         Write-Host "Run manually: cd project_ai_academy && python -c `"from sheets_db import SoulRebootDB; import os; SoulRebootDB(os.environ['SOUL_REBOOT_SPREADSHEET_ID'])`"" -ForegroundColor Yellow

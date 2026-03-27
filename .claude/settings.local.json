@@ -11,7 +11,12 @@
       "Bash(powershell.exe -Command \"[System.Environment]::GetEnvironmentVariable\\(''GMAIL_APP_PASSWORD'', ''User''\\)\")",
       "Bash(py autonomous_engine.py --episode 1 --force)",
       "Bash(py asset_generator.py --episode 1)",
-      "Bash(py -c \":*)"
+      "Bash(py -c \":*)",
+      "Bash(gh run list --repo insight00studio-web/soul-reboot --limit 5)",
+      "Bash(gh run view 23657594034 --repo insight00studio-web/soul-reboot --log-failed)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File ./update_token.ps1)",
+      "Bash(gh workflow run phase_b.yml --repo insight00studio-web/soul-reboot -f episode=14)",
+      "Bash(gh run view 23669271160 --repo insight00studio-web/soul-reboot --log-failed)"
     ]
   }
 }

@@ -222,17 +222,28 @@ def step_collect_news(db: SoulRebootDB, config: dict) -> list[dict]:
 あなたは日本語のニュースリサーチャーです。
 今日（{today}）の注目ニュースを{count}件、以下のJSON配列形式で出力してください。
 
-特に重要なカテゴリ:
-1. AI・テクノロジー（ChatGPT/Gemini等の新機能、旧モデル廃止など）
-2. 季節・行事イベント（今の季節に関連する話題）
-3. 社会（感動・感情に訴える話題）
+**重要: カテゴリの多様性を確保すること。**
+以下のカテゴリから最低3つ以上の異なるカテゴリを含めてください。
+AI・テクノロジーは最大2件までとし、残りは別カテゴリから選んでください。
+
+カテゴリ一覧:
+1. AI・テクノロジー（最大2件まで）
+2. 季節・行事（今の季節に関連する話題、天気、自然現象）
+3. 文化・エンタメ（映画、音楽、アニメ、ゲーム、本など）
+4. 科学・宇宙（宇宙探査、医療、環境、生物学など）
+5. スポーツ（国内外の注目試合、選手の話題）
+6. 社会・ほっこり（感動する話題、人間ドラマ、地域の話題）
+7. 国際（海外の興味深い出来事、文化の違い）
+
+※ 政治・宗教・犯罪・災害（地震速報等は除く）・センシティブな話題は避けてください。
 
 出力フォーマット:
 [
   {{
     "headline": "ニュースの見出し（30字以内）",
     "source": "情報ソース名（例: NHK, TechCrunch JP）",
-    "category": "AI/季節/社会/テクノロジー のどれか",
+    "category": "上記カテゴリ名のどれか",
+    "story_hook": "この話題をAI×青春物語にどう活かせるか（1文）",
     "relevance_score": 80
   }}
 ]
@@ -249,6 +260,7 @@ relevance_scoreは「AIと記憶をテーマにした青春物語」への関連
                     "情報ソース": n.get("source", ""),
                     "カテゴリ": n.get("category", ""),
                     "関連スコア": n.get("relevance_score", 0),
+                    "活用ヒント": n.get("story_hook", ""),
                 })
             db.append_news(mapped_news)
             print(f"  → {len(news_items)}件のニュースを収集・記録しました")
@@ -414,9 +426,11 @@ def step_architect(db: SoulRebootDB, config: dict,
     dialogue_samples = db.build_dialogue_samples_context()
 
     # ニュースサマリー
-    news_context = "今日のニュース（参考）:\n"
-    for n in news[:3]:
-        news_context += f"  - [{n.get('カテゴリ')}] {n.get('見出し')}\n"
+    news_context = "今日のニュース（参考 — 多様なジャンルから物語のスパイスとして活用してください）:\n"
+    for n in news[:5]:
+        hook = n.get('活用ヒント', '')
+        hook_str = f" → {hook}" if hook else ""
+        news_context += f"  - [{n.get('カテゴリ')}] {n.get('見出し')}{hook_str}\n"
 
     # コメントサマリー
     comment_context = "採用候補コメント（参考）:\n"

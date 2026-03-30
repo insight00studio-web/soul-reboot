@@ -173,6 +173,38 @@ def call_opus(prompt: str, system_prompt: str = "",
         return raw
 
 
+def _parse_json_robust(text: str) -> dict:
+    """
+    テキストからJSON部分を抽出してパースする。
+    1. そのまま json.loads
+    2. 末尾カンマ除去して json.loads
+    3. 最外の { ... } を抽出して json.loads
+    失敗時は JSONDecodeError を raise する。
+    """
+    # 1. そのままパース
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # 2. 末尾カンマ除去
+    cleaned = re.sub(r',\s*([\]}])', r'\1', text)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    # 3. 最外の { ... } を抽出
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        extracted = text[start:end + 1]
+        cleaned = re.sub(r',\s*([\]}])', r'\1', extracted)
+        return json.loads(cleaned)
+
+    raise json.JSONDecodeError("No valid JSON found", text, 0)
+
+
 # ===================================================================
 # STEP 1: ニュース収集
 # ===================================================================
@@ -481,12 +513,22 @@ def step_architect(db: SoulRebootDB, config: dict,
 }}
 """
 
-    plot = call_opus(full_prompt)
+    max_json_retries = 2
+    for json_attempt in range(max_json_retries + 1):
+        plot = call_opus(full_prompt)
 
-    if isinstance(plot, str):
-        # テキストで返ってきた場合、JSON部分の再抽出を試みる
-        cleaned = re.sub(r',\s*([\]}])', r'\1', plot)
-        plot = json.loads(cleaned)
+        if isinstance(plot, dict):
+            break
+
+        # テキストで返ってきた場合、JSON部分の抽出を試みる
+        try:
+            plot = _parse_json_robust(plot)
+            break
+        except json.JSONDecodeError:
+            if json_attempt < max_json_retries:
+                print(f"  [ARCHITECT] JSONパース失敗。リトライ {json_attempt + 1}/{max_json_retries}...")
+            else:
+                raise RuntimeError(f"Architectの応答が{max_json_retries + 1}回連続でJSON不正。手動再実行してください。")
 
     # Episodesシートに書き込む
     today_str = date.today().isoformat()
@@ -646,11 +688,23 @@ def step_editor(db: SoulRebootDB, episode_number: int,
 ```
 """
 
-    edited = call_opus(full_prompt)
+    max_json_retries = 2
+    for json_attempt in range(max_json_retries + 1):
+        edited = call_opus(full_prompt)
 
-    if isinstance(edited, str):
-        cleaned = re.sub(r',\s*([\]}])', r'\1', edited)
-        edited = json.loads(cleaned)
+        if isinstance(edited, dict) or isinstance(edited, list):
+            break
+
+        # テキストで返ってきた場合、JSON部分の抽出を試みる
+        try:
+            edited = _parse_json_robust(edited)
+            break
+        except json.JSONDecodeError:
+            if json_attempt < max_json_retries:
+                print(f"  [EDITOR] JSONパース失敗。リトライ {json_attempt + 1}/{max_json_retries}...")
+            else:
+                print("  WARN: Editor応答が{max_json_retries + 1}回連続でJSON不正（元の台本を維持）")
+                return script_lines, {"total": 0, "issues": ["Editor応答パースエラー（リトライ超過）"]}
 
     # 新フォーマット（quality_score + edited_script）のパース
     quality_score = {}

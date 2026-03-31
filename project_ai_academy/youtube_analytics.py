@@ -14,68 +14,21 @@ YouTube Data API v3 を使用して以下を収集する:
     2. credentials.json（OAuth 2.0 Desktop Client）が同ディレクトリに配置済み
 """
 
-import json
-import os
-import re
-import subprocess
 import sys
-import time
 from datetime import date
-from pathlib import Path
 
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# 認証ファイル
-BASE_DIR = Path(__file__).parent
-CREDENTIALS_FILE = BASE_DIR / "credentials.json"
-YOUTUBE_TOKEN_FILE = BASE_DIR / "youtube_token.json"
-
-# YouTube Data API v3 スコープ（読み取り + アップロード共用）
-SCOPES = [
-    "https://www.googleapis.com/auth/youtube.upload",
-    "https://www.googleapis.com/auth/youtube.readonly",
-    "https://www.googleapis.com/auth/youtube.force-ssl",
-]
+from youtube_auth import get_youtube_client
+from llm_client import call_opus
+from utils import extract_video_id
 
 
 class YouTubeAnalytics:
     """YouTube Data API v3 による視聴データ・コメント収集"""
 
     def __init__(self):
-        self.youtube = self._authenticate()
-
-    def _authenticate(self):
-        """OAuth2認証を行い、YouTube APIクライアントを返す"""
-        creds = None
-
-        if YOUTUBE_TOKEN_FILE.exists():
-            creds = Credentials.from_authorized_user_file(
-                str(YOUTUBE_TOKEN_FILE), SCOPES
-            )
-
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                print("[ANALYTICS AUTH] トークンをリフレッシュ中...")
-                creds.refresh(Request())
-            else:
-                if not CREDENTIALS_FILE.exists():
-                    print(f"ERROR: {CREDENTIALS_FILE} が見つかりません")
-                    sys.exit(1)
-                print("[ANALYTICS AUTH] ブラウザで認証してください...")
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    str(CREDENTIALS_FILE), SCOPES
-                )
-                creds = flow.run_local_server(port=0)
-
-            with open(YOUTUBE_TOKEN_FILE, "w") as f:
-                f.write(creds.to_json())
-            print("[ANALYTICS AUTH] 認証成功。トークンを保存しました。")
-
-        return build("youtube", "v3", credentials=creds)
+        self.youtube = get_youtube_client()
 
     def get_video_stats(self, video_ids: list[str]) -> list[dict]:
         """
@@ -236,7 +189,11 @@ def analyze_comments_sentiment(comments: list[dict]) -> list[dict]:
 ]
 """
 
-    result = _call_opus_for_analysis(prompt)
+    try:
+        result = call_opus(prompt, timeout=300)
+    except Exception as e:
+        print(f"  [WARN] コメント分析エラー: {e}")
+        result = []
 
     # 結果をコメントにマージ
     if isinstance(result, list):
@@ -257,73 +214,8 @@ def analyze_comments_sentiment(comments: list[dict]) -> list[dict]:
     return comments
 
 
-def _call_opus_for_analysis(prompt: str, timeout: int = 300) -> list | str:
-    """Claude Code CLI経由でOpus 4.6を呼び出す（感情分析用）"""
-    cmd = ["claude", "-p", "--output-format", "text", "--model", "claude-opus-4-6"]
-
-    # CLAUDECODE環境変数を除去（ネスト防止）
-    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
-
-    print("  [OPUS] コメント感情分析中...")
-    try:
-        result = subprocess.run(
-            cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            encoding="utf-8",
-            env=env,
-        )
-
-        if result.returncode != 0:
-            print(f"  [WARN] Claude CLI error: {result.stderr[:200]}")
-            return []
-
-        raw = result.stdout.strip()
-        print(f"  [OPUS] 感情分析完了: {len(raw)}文字")
-
-        # JSONブロック抽出
-        json_match = re.search(r'```json\s*([\s\S]*?)```', raw)
-        if json_match:
-            raw = json_match.group(1).strip()
-
-        # 末尾カンマ除去してパース
-        cleaned = re.sub(r',\s*([\]}])', r'\1', raw)
-        return json.loads(cleaned)
-
-    except subprocess.TimeoutExpired:
-        print("  [WARN] コメント分析がタイムアウトしました")
-        return []
-    except json.JSONDecodeError:
-        print(f"  [WARN] コメント分析結果のJSONパースに失敗")
-        return []
-    except Exception as e:
-        print(f"  [WARN] コメント分析エラー: {e}")
-        return []
-
-
-# ===================================================================
-# ユーティリティ
-# ===================================================================
-
-def extract_video_id(youtube_url: str) -> str | None:
-    """YouTube URLからvideo_idを抽出する"""
-    if not youtube_url:
-        return None
-    # https://youtu.be/VIDEO_ID
-    match = re.search(r'youtu\.be/([a-zA-Z0-9_-]{11})', youtube_url)
-    if match:
-        return match.group(1)
-    # https://www.youtube.com/watch?v=VIDEO_ID
-    match = re.search(r'[?&]v=([a-zA-Z0-9_-]{11})', youtube_url)
-    if match:
-        return match.group(1)
-    # https://studio.youtube.com/video/VIDEO_ID/...
-    match = re.search(r'youtube\.com/video/([a-zA-Z0-9_-]{11})', youtube_url)
-    if match:
-        return match.group(1)
-    return None
+# extract_video_id は utils.py に移動済み（後方互換のため re-export）
+# from utils import extract_video_id  # ファイル先頭で既にインポート済み
 
 
 # ===================================================================

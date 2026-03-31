@@ -19,27 +19,12 @@ YouTube Data API v3 を使用して動画を予約アップロードする。
 
 import argparse
 import os
-import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# 認証ファイル
-BASE_DIR = Path(__file__).parent
-CREDENTIALS_FILE = BASE_DIR / "credentials.json"
-YOUTUBE_TOKEN_FILE = BASE_DIR / "youtube_token.json"
+from youtube_auth import get_youtube_client
 
-# YouTube Data API v3 のスコープ
-SCOPES = [
-    "https://www.googleapis.com/auth/youtube.upload",
-    "https://www.googleapis.com/auth/youtube.readonly",
-    "https://www.googleapis.com/auth/youtube.force-ssl",
-]
 
 # デフォルト設定
 DEFAULT_CATEGORY_ID = "24"  # Entertainment
@@ -53,39 +38,7 @@ class YouTubeUploader:
     """YouTube Data API v3 による動画アップローダー"""
 
     def __init__(self):
-        self.youtube = self._authenticate()
-
-    def _authenticate(self):
-        """OAuth2認証を行い、YouTube APIクライアントを返す"""
-        creds = None
-
-        # キャッシュ済みトークンの読み込み
-        if YOUTUBE_TOKEN_FILE.exists():
-            creds = Credentials.from_authorized_user_file(
-                str(YOUTUBE_TOKEN_FILE), SCOPES
-            )
-
-        # トークンが無効 or 期限切れ → リフレッシュ or 再認証
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                print("[AUTH] トークンをリフレッシュ中...")
-                creds.refresh(Request())
-            else:
-                if not CREDENTIALS_FILE.exists():
-                    print(f"ERROR: {CREDENTIALS_FILE} が見つかりません")
-                    sys.exit(1)
-                print("[AUTH] ブラウザで認証してください...")
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    str(CREDENTIALS_FILE), SCOPES
-                )
-                creds = flow.run_local_server(port=0)
-
-            # トークンを保存
-            with open(YOUTUBE_TOKEN_FILE, "w") as f:
-                f.write(creds.to_json())
-            print("[AUTH] 認証成功。トークンを保存しました。")
-
-        return build("youtube", "v3", credentials=creds)
+        self.youtube = get_youtube_client()
 
     def upload(
         self,

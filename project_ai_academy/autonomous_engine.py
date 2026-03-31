@@ -173,6 +173,19 @@ def call_opus(prompt: str, system_prompt: str = "",
         return raw
 
 
+def _summarize_scene_plan(scene_plan: list) -> str:
+    """scene_planからメイン舞台のサマリー文字列を生成する（シート保存用）"""
+    if not scene_plan:
+        return ""
+    locations = [s.get("location", "") for s in scene_plan if s.get("location")]
+    unique = list(dict.fromkeys(locations))  # 順序を保ちつつ重複除去
+    if not unique:
+        return ""
+    if len(unique) == 1:
+        return f"{unique[0]}（単一舞台）"
+    return "→".join(unique)
+
+
 def _parse_json_robust(text: str) -> dict:
     """
     テキストからJSON部分を抽出してパースする。
@@ -423,6 +436,7 @@ def step_architect(db: SoulRebootDB, config: dict,
     story_progress = db.build_story_progress_context()
     analytics_context = db.build_analytics_context()
     past_structures = db.build_past_structures_context()
+    past_scene_settings = db.build_past_scene_settings_context()
     dialogue_samples = db.build_dialogue_samples_context()
 
     # ニュースサマリー
@@ -480,6 +494,8 @@ def step_architect(db: SoulRebootDB, config: dict,
 
 {past_structures}
 
+{past_scene_settings}
+
 {dialogue_samples}
 
 {news_context}
@@ -510,6 +526,11 @@ def step_architect(db: SoulRebootDB, config: dict,
     "development": "展開（3〜4文）",
     "climax": "クライマックス（3〜4文）"
   }},
+  "scene_plan": [
+    {{"scene_label": "導入", "location": "場所（例: 体育館）", "time": "時間帯（例: 5限・体育の授業中）", "note": "そのシーンで起こること"}},
+    {{"scene_label": "展開", "location": "場所", "time": "時間帯", "note": "そのシーンで起こること"}},
+    {{"scene_label": "クライマックス", "location": "場所", "time": "時間帯", "note": "そのシーンで起こること"}}
+  ],
   "foreshadowing_added": [
     {{"description": "追加する伏線（最大1件。不要なら空配列[]）", "target_episode": 10, "importance": "MID"}}
   ],
@@ -559,6 +580,7 @@ def step_architect(db: SoulRebootDB, config: dict,
         "クリフハンガー": plot.get("cliffhanger", ""),
         "構造パターン": plot.get("structure_type", ""),
         "掛け合いパターン": plot.get("comedy_pattern", ""),
+        "シーン舞台": _summarize_scene_plan(plot.get("scene_plan", [])),
         "ステータス": "PLANNED",
         "YouTube_URL": "",
         "メモ": "",
@@ -599,7 +621,7 @@ def step_writer(db: SoulRebootDB, _config: dict, episode_number: int, plot: dict
 [
   {{
     "scene_number": 1,
-    "scene_name": "シーン名（例: 昇降口・入学式前）",
+    "scene_name": "シーン名（Architectのscene_planのlocationとtimeを反映。例: 体育館・5限バスケ中 / 屋上・昼休み / スタバ・放課後）",
     "image_prompt": "Stable Diffusion用の英語プロンプト",
     "speaker": "NAGISA | SHINJI | NARRATOR | SYSTEM",
     "line_text": "セリフまたは地の文",

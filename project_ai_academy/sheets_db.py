@@ -520,6 +520,20 @@ class SoulRebootDB:
                 lines.append(f"  第{ep_num}話: 構造={structure or '未記録'} / 掛け合い={comedy or '未記録'}")
         return "\n".join(lines)
 
+    def build_past_scene_settings_context(self) -> str:
+        """過去全話のシーン舞台一覧を返す（舞台重複防止用）"""
+        ws = self._sheet(SHEET_EPISODES)
+        records = ws.get_all_records()
+        if not records:
+            return "使用済みシーン舞台: なし"
+        lines = ["=== 使用済みシーン舞台（直近3話と同じメイン舞台は避けること） ==="]
+        for ep in records:
+            ep_num = ep.get("話数", "")
+            scene_settings = ep.get("シーン舞台", "")
+            if ep_num and scene_settings:
+                lines.append(f"  第{ep_num}話: {scene_settings}")
+        return "\n".join(lines)
+
     def build_dialogue_samples_context(self) -> str:
         """直近2話の代表的なセリフを返す（文体重複検知用）"""
         ws = self._sheet(SHEET_SCRIPTS)

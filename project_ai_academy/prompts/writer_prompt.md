@@ -66,6 +66,11 @@ Writerは以下のリストから `tone` を選択すること。リスト外の
     - **G: 水回避型** — ナギサが水・雨を避ける伏線シーン
 5. **視覚的描写の一貫性**: セリフや地の文でキャラクターのアクセサリー（ブローチ・腕時計など）・小道具・特定の環境描写に言及した場合、**その要素を同シーンの `image_prompt` に必ず含めること**。ナレーターが「〜を持っていた」「〜が光っていた」と語る場面は特に注意。
 6. **TTSボイス**: `speaker` フィールドを正しく設定すること（NAGISA / SHINJI / NARRATOR / SYSTEM）。ボイスは自動割り当てされる。
+7. **シーン舞台の忠実な反映**: Architectが `scene_plan` で指定した場所・時間帯を忠実に台本へ反映すること。
+   - 各シーンの `scene_name` は scene_plan の `location` と `time` を組み合わせた具体的な名前にすること（例: 「体育館・5限バスケ中」「スタバ・放課後」「屋上・昼休み」）
+   - `image_prompt` には場所の視覚的要素を必ず含めること（例: gymnasium interior, basketball court / Starbucks cafe interior, warm lighting / school rooftop, lunchtime）
+   - scene_plan にない場所を勝手に追加しないこと。シーン間のつなぎが必要な場合は最小限に留めること
+   - **全シーンが同一の場所（単一舞台エピソード）になる場合も、それはArchitectが意図した構成なので忠実に従うこと**
 
 ## 出力フォーマット（厳密なJSON配列形式）
 

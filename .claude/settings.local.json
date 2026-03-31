@@ -1,4 +1,20 @@
 {
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "& 'C:\\Users\\uca-n\\youtube\\update_token.ps1'",
+            "shell": "powershell",
+            "timeout": 120,
+            "statusMessage": "トークンを更新中...",
+            "async": true
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(python test_notify.py)",

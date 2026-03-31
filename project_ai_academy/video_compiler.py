@@ -13,9 +13,10 @@ from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
     ImageClip, AudioFileClip, CompositeVideoClip,
-    concatenate_videoclips, ColorClip
+    concatenate_videoclips
 )
 from sheets_db import SoulRebootDB
+from utils import find_japanese_font
 
 load_dotenv()
 
@@ -39,7 +40,7 @@ class VideoCompiler:
         self.ending_duration = 8.0
 
         # 字幕設定
-        self.font_path = self._find_japanese_font()
+        self.font_path = find_japanese_font()
         self.subtitle_font_size = 42
         self.speaker_name_font_size = 32
         self.subtitle_margin_bottom = 80
@@ -59,29 +60,6 @@ class VideoCompiler:
     # ------------------------------------------------------------------
     # ユーティリティ
     # ------------------------------------------------------------------
-
-    def _find_japanese_font(self) -> str:
-        """利用可能な日本語フォントを検索（Windows / Linux 両対応）"""
-        candidates = [
-            # Windows
-            "C:/Windows/Fonts/YuGothB.ttc",
-            "C:/Windows/Fonts/YuGothM.ttc",
-            "C:/Windows/Fonts/msgothic.ttc",
-            "C:/Windows/Fonts/meiryo.ttc",
-            # Linux (fonts-noto-cjk)
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            # Linux (fonts-ipafont)
-            "/usr/share/fonts/truetype/fonts-ipafont-gothic/ipag.ttf",
-            "/usr/share/fonts/truetype/fonts-ipafont-gothic/ipagp.ttf",
-        ]
-        for path in candidates:
-            if os.path.exists(path):
-                return path
-        raise FileNotFoundError(
-            "日本語フォントが見つかりません。Windows または Linux (fonts-noto-cjk) が必要です。"
-        )
 
     def _get_audio_duration(self, audio_path: str) -> float:
         """WAVファイルの再生時間（秒）を返す。エラー時は0.0。"""
@@ -197,26 +175,39 @@ class VideoCompiler:
     # 字幕画像生成
     # ------------------------------------------------------------------
 
+    _SPEAKER_NAMES = {"NAGISA": "ナギサ", "SHINJI": "シンジ"}
+
+    def _format_speaker(self, speaker: str, text: str) -> tuple[str, str, tuple]:
+        """話者識別子から (speaker_label, display_text, color) を返す"""
+        color = self.speaker_colors.get(speaker, (255, 255, 255))
+        if speaker == "NARRATOR":
+            return "", text, color
+        if speaker == "SYSTEM":
+            return "SYSTEM: ", text, color
+        char_name = self._SPEAKER_NAMES.get(speaker, speaker)
+        return f"{char_name}：", text, color
+
+    @staticmethod
+    def _draw_outlined_text(draw: ImageDraw.ImageDraw, pos: tuple,
+                             text: str, font: ImageFont.FreeTypeFont,
+                             color: tuple, outline_width: int = 2) -> None:
+        """黒縁取り付きテキストを描画する"""
+        x, y = pos
+        for dx in range(-outline_width, outline_width + 1):
+            for dy in range(-outline_width, outline_width + 1):
+                if dx == 0 and dy == 0:
+                    continue
+                draw.text((x + dx, y + dy), text, font=font, fill=(0, 0, 0, 255))
+        draw.text(pos, text, font=font, fill=(*color, 255))
+
     def _create_subtitle_image(self, text: str, speaker: str) -> np.ndarray:
         """字幕テキストをRGBA numpy配列として生成"""
         img = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
 
         font = ImageFont.truetype(self.font_path, self.subtitle_font_size)
         name_font = ImageFont.truetype(self.font_path, self.speaker_name_font_size)
 
-        # 話者名のフォーマット
-        speaker_color = self.speaker_colors.get(speaker, (255, 255, 255))
-        if speaker in ("NARRATOR",):
-            display_text = text
-            speaker_label = ""
-        elif speaker == "SYSTEM":
-            display_text = text
-            speaker_label = "SYSTEM: "
-        else:
-            char_name = {"NAGISA": "ナギサ", "SHINJI": "シンジ"}.get(speaker, speaker)
-            display_text = text
-            speaker_label = f"{char_name}："
+        speaker_label, display_text, speaker_color = self._format_speaker(speaker, text)
 
         # テキスト折り返し
         usable_width = int(self.width * 0.85)
@@ -240,23 +231,12 @@ class VideoCompiler:
         img = Image.alpha_composite(img, bar_overlay)
         draw = ImageDraw.Draw(img)
 
-        # テキスト描画位置
         y = bar_top + 15
 
         # 話者名ラベル
         if speaker_label:
-            label_bbox = name_font.getbbox(speaker_label)
-            label_w = label_bbox[2] - label_bbox[0]
             label_x = (self.width - usable_width) // 2
-            # 黒縁取り
-            for dx in range(-2, 3):
-                for dy in range(-2, 3):
-                    if dx == 0 and dy == 0:
-                        continue
-                    draw.text((label_x + dx, y + dy), speaker_label,
-                              font=name_font, fill=(0, 0, 0, 255))
-            draw.text((label_x, y), speaker_label,
-                      font=name_font, fill=(*speaker_color, 255))
+            self._draw_outlined_text(draw, (label_x, y), speaker_label, name_font, speaker_color)
             y += self.speaker_name_font_size + 4
 
         # セリフ本文
@@ -264,14 +244,7 @@ class VideoCompiler:
             line_bbox = font.getbbox(line)
             line_w = line_bbox[2] - line_bbox[0]
             x = (self.width - line_w) // 2
-            # 黒縁取り
-            for dx in range(-2, 3):
-                for dy in range(-2, 3):
-                    if dx == 0 and dy == 0:
-                        continue
-                    draw.text((x + dx, y + dy), line,
-                              font=font, fill=(0, 0, 0, 255))
-            draw.text((x, y), line, font=font, fill=(*speaker_color, 255))
+            self._draw_outlined_text(draw, (x, y), line, font, speaker_color)
             y += line_height
 
         return np.array(img)

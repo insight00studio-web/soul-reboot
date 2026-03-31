@@ -59,118 +59,6 @@ def load_prompt(filename: str) -> str:
         return f.read()
 
 
-def safe_int(val, default: int = 0) -> int:
-    """安全な int 変換。空文字列や None でもクラッシュしない"""
-    try:
-        return int(val)
-    except (ValueError, TypeError):
-        return default
-
-
-def call_gemini(prompt: str, model_name: str = "gemini-3-flash-preview",
-                response_format: str = "json") -> dict | str:
-    """
-    Gemini APIを呼び出す（指数バックオフ付きリトライ）。
-    response_format="json" の場合、JSONをパースして返す。
-    response_format="text" の場合、テキストをそのまま返す。
-    """
-    client = genai.Client(api_key=GEMINI_API_KEY)
-
-    gen_config = types.GenerateContentConfig(temperature=0.8)
-    if response_format == "json":
-        gen_config = types.GenerateContentConfig(
-            temperature=0.8,
-            response_mime_type="application/json",
-        )
-
-    for attempt in range(3):
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=gen_config,
-            )
-            break
-        except Exception as e:
-            if attempt == 2:
-                raise
-            wait = 2 ** attempt * 5
-            print(f"  [RETRY] call_gemini {attempt+1}/3 in {wait}s: {e}")
-            time.sleep(wait)
-
-    raw = response.text
-
-    if response_format == "json":
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            print(f"  [WARN] JSON parse failed. Raw response: {raw[:500]}")
-            # コードブロックと不要な末尾カンマ（trailing comma）を除去して再試行
-            cleaned = raw.strip().strip("```json").strip("```").strip()
-            # }, } や ], ] の前にある不要なカンマを削除する
-            cleaned = re.sub(r',\s*([\]}])', r'\1', cleaned)
-            return json.loads(cleaned)
-    return raw
-
-
-def call_opus(prompt: str, system_prompt: str = "",
-              timeout: int = 600) -> dict | str:
-    """
-    Claude Code CLI経由でOpus 4.6を呼び出す。
-    JSONブロックが含まれていればパースして返す。なければテキストを返す。
-    529 Overloadedエラーは最大3回リトライ（60秒待機）。
-    """
-    cmd = ["claude", "-p", "--output-format", "text", "--model", "claude-opus-4-6"]
-    if system_prompt:
-        cmd.extend(["--system-prompt", system_prompt])
-
-    # Claude Codeのネスト防止を回避するため、CLAUDECODE環境変数を除去
-    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
-
-    max_retries = 3
-    retry_wait = 60  # seconds
-    for attempt in range(max_retries + 1):
-        print(f"  [OPUS] Claude Opus 4.6 呼び出し中..." + (f" (リトライ {attempt}/{max_retries})" if attempt > 0 else ""))
-        result = subprocess.run(
-            cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            encoding="utf-8",
-            env=env,
-        )
-
-        if result.returncode == 0:
-            break
-
-        stdout_preview = result.stdout[:300]
-        stderr_preview = result.stderr[:300]
-        # 529 Overloaded は一時的なサーバー過負荷 → リトライ
-        if "529" in stdout_preview or "overloaded_error" in stdout_preview:
-            if attempt < max_retries:
-                print(f"  [OPUS] 529 Overloaded。{retry_wait}秒後にリトライします...")
-                import time as _time
-                _time.sleep(retry_wait)
-                continue
-        raise RuntimeError(f"Claude CLI error (rc={result.returncode}): stderr={stderr_preview} stdout={stdout_preview}")
-
-    raw = result.stdout.strip()
-    print(f"  [OPUS] 応答受信: {len(raw)}文字")
-
-    # JSONブロックの抽出を試みる
-    json_match = re.search(r'```json\s*([\s\S]*?)```', raw)
-    if json_match:
-        raw = json_match.group(1).strip()
-
-    try:
-        # 不要な末尾カンマを除去して再試行
-        cleaned = re.sub(r',\s*([\]}])', r'\1', raw)
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        return raw
-
-
 def _summarize_scene_plan(scene_plan: list) -> str:
     """scene_planからメイン舞台のサマリー文字列を生成する（シート保存用）"""
     if not scene_plan:
@@ -182,39 +70,6 @@ def _summarize_scene_plan(scene_plan: list) -> str:
     if len(unique) == 1:
         return f"{unique[0]}（単一舞台）"
     return "→".join(unique)
-
-
-def _parse_json_robust(text: str) -> dict:
-    """
-    テキストからJSON部分を抽出してパースする。
-    1. そのまま json.loads
-    2. 末尾カンマ除去して json.loads
-    3. 最外の { ... } を抽出して json.loads
-    失敗時は JSONDecodeError を raise する。
-    """
-    # 1. そのままパース
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # 2. 末尾カンマ除去
-    cleaned = re.sub(r',\s*([\]}])', r'\1', text)
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        pass
-
-    # 3. 最外の { ... } を抽出
-    start = text.find('{')
-    end = text.rfind('}')
-    if start != -1 and end != -1 and end > start:
-        extracted = text[start:end + 1]
-        cleaned = re.sub(r',\s*([\]}])', r'\1', extracted)
-        return json.loads(cleaned)
-
-    raise json.JSONDecodeError("No valid JSON found", text, 0)
-
 
 # ===================================================================
 # STEP 1: ニュース収集
@@ -417,16 +272,11 @@ def step_score_comments(db: SoulRebootDB) -> list[dict]:
 # STEP 3: Architect - プロット生成
 # ===================================================================
 
-def step_architect(db: SoulRebootDB, config: dict,
-                   episode_number: int, news: list[dict],
-                   top_comments: list[dict],
-                   quality_feedback: str = "") -> dict:
-    """
-    ArchitectプロンプトにL2記憶・伏線・ニュース・コメントを注入し、
-    Geminiにプロットを生成させ、Episodesシートに書き込む。
-    """
-    print(f"\n[ARCHITECT] STEP 3: Architect - 第{episode_number}話プロット生成...")
-
+def _build_architect_prompt(db: SoulRebootDB, config: dict,
+                             episode_number: int, news: list[dict],
+                             top_comments: list[dict],
+                             quality_feedback: str = "") -> str:
+    """Architectに渡すプロンプト文字列を構築する"""
     architect_base = load_prompt("architect_prompt.md")
     l1_context = db.build_l1_context()
     foreshadowing_context = db.build_open_foreshadowing_context()
@@ -469,7 +319,15 @@ def step_architect(db: SoulRebootDB, config: dict,
 
     today = date.today().isoformat()
 
-    full_prompt = f"""
+    feedback_section = f"""
+---
+## 品質フィードバック（前回のEditor評価）
+
+前回の台本が品質基準を満たしませんでした。以下の問題点を必ず解消したプロットを生成してください:
+{quality_feedback}
+""" if quality_feedback else ""
+
+    return f"""
 {architect_base}
 
 ---
@@ -501,13 +359,7 @@ def step_architect(db: SoulRebootDB, config: dict,
 {comment_context}
 
 {analytics_context}
-{f"""
----
-## 品質フィードバック（前回のEditor評価）
-
-前回の台本が品質基準を満たしませんでした。以下の問題点を必ず解消したプロットを生成してください:
-{quality_feedback}
-""" if quality_feedback else ""}
+{feedback_section}
 ---
 ## 出力フォーマット（JSON形式で出力してください）
 
@@ -546,6 +398,21 @@ def step_architect(db: SoulRebootDB, config: dict,
 }}
 """
 
+
+def step_architect(db: SoulRebootDB, config: dict,
+                   episode_number: int, news: list[dict],
+                   top_comments: list[dict],
+                   quality_feedback: str = "") -> dict:
+    """
+    ArchitectプロンプトにL2記憶・伏線・ニュース・コメントを注入し、
+    Opusにプロットを生成させ、Episodesシートに書き込む。
+    """
+    print(f"\n[ARCHITECT] STEP 3: Architect - 第{episode_number}話プロット生成...")
+
+    full_prompt = _build_architect_prompt(
+        db, config, episode_number, news, top_comments, quality_feedback
+    )
+
     max_json_retries = 2
     for json_attempt in range(max_json_retries + 1):
         plot = call_opus(full_prompt)
@@ -555,7 +422,7 @@ def step_architect(db: SoulRebootDB, config: dict,
 
         # テキストで返ってきた場合、JSON部分の抽出を試みる
         try:
-            plot = _parse_json_robust(plot)
+            plot = parse_json_robust(plot)
             break
         except json.JSONDecodeError:
             if json_attempt < max_json_retries:
@@ -731,7 +598,7 @@ def step_editor(db: SoulRebootDB, episode_number: int,
 
         # テキストで返ってきた場合、JSON部分の抽出を試みる
         try:
-            edited = _parse_json_robust(edited)
+            edited = parse_json_robust(edited)
             break
         except json.JSONDecodeError:
             if json_attempt < max_json_retries:

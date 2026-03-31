@@ -1,5 +1,7 @@
 import os
 import argparse
+import time
+import wave
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
@@ -7,13 +9,16 @@ from google import genai
 from google.genai import types
 from PIL import Image, ImageDraw, ImageFont
 from sheets_db import SoulRebootDB
+from utils import find_japanese_font
 
 # .envの読み込み
 load_dotenv()
 
-import time
-
-import wave
+# レート制限・リトライ設定
+_RATE_LIMIT_WAIT = 21       # 生成成功後のレート制限回避待機（秒）
+_TTS_RETRY_WAIT_429 = 35    # TTS 429エラー時のリトライ待機（秒）
+_IMAGE_RETRY_WAIT_429 = 65  # 画像生成 429エラー時のリトライ待機（秒）
+_MAX_RETRIES = 3            # 生成リトライ上限
 
 class AssetGenerator:
     def __init__(self, spreadsheet_id: str):
@@ -208,7 +213,7 @@ class AssetGenerator:
             f"Text: {text}"
         )
 
-        for attempt in range(3):
+        for attempt in range(_MAX_RETRIES):
             try:
                 # TTSのリクエスト
                 response = self.client.models.generate_content(
@@ -261,13 +266,13 @@ class AssetGenerator:
                         f.write(audio_data)
                 
                 print(f"    Saved: {file_path}")
-                time.sleep(21) # Rate limit回避
+                time.sleep(_RATE_LIMIT_WAIT)
                 return str(file_path)
-                
+
             except Exception as e:
                 if "429" in str(e):
-                    print(f"    Rate limited. Waiting 30s (Attempt {attempt+1}/3)...")
-                    time.sleep(35)
+                    print(f"    Rate limited. Waiting {_TTS_RETRY_WAIT_429}s (Attempt {attempt+1}/{_MAX_RETRIES})...")
+                    time.sleep(_TTS_RETRY_WAIT_429)
                     continue
                 print(f"    ERROR: Voice generation failed: {e}")
                 return ""
@@ -298,7 +303,7 @@ class AssetGenerator:
         elif len(contents) == 1:
             print("  [IMAGE] No master images loaded. Using text-only prompt.")
 
-        for attempt in range(3):
+        for attempt in range(_MAX_RETRIES):
             try:
                 response = self.client.models.generate_content(
                     model=self.image_model,
@@ -332,13 +337,13 @@ class AssetGenerator:
                     f.write(image_data)
                 
                 print(f"    Saved: {file_path}")
-                time.sleep(21) # Rate limit回避
+                time.sleep(_RATE_LIMIT_WAIT)
                 return str(file_path)
-                
+
             except Exception as e:
                 if "429" in str(e):
-                    print(f"    Rate limited. Waiting 60s (Attempt {attempt+1}/3)...")
-                    time.sleep(65)
+                    print(f"    Rate limited. Waiting {_IMAGE_RETRY_WAIT_429}s (Attempt {attempt+1}/{_MAX_RETRIES})...")
+                    time.sleep(_IMAGE_RETRY_WAIT_429)
                     continue
                 print(f"    ERROR: Image generation failed: {e}")
                 return ""
@@ -357,7 +362,7 @@ class AssetGenerator:
             return ""
 
         # フォント検索
-        font_path = self._find_thumbnail_font()
+        font_path = find_japanese_font()
 
         # 1. ベース画像読み込み → center-crop → 1280x720
         img = Image.open(base_image_path).convert("RGB")
@@ -421,26 +426,6 @@ class AssetGenerator:
         img.save(str(thumb_path), "PNG")
         print(f"  [THUMBNAIL] Saved: {thumb_path}")
         return str(thumb_path)
-
-    def _find_thumbnail_font(self) -> str:
-        """サムネイル用日本語フォント（太字優先、Windows / Linux 両対応）"""
-        candidates = [
-            # Windows
-            "C:/Windows/Fonts/YuGothB.ttc",
-            "C:/Windows/Fonts/YuGothM.ttc",
-            "C:/Windows/Fonts/msgothic.ttc",
-            "C:/Windows/Fonts/meiryo.ttc",
-            # Linux (fonts-noto-cjk)
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            # Linux (fonts-ipafont)
-            "/usr/share/fonts/truetype/fonts-ipafont-gothic/ipag.ttf",
-        ]
-        for path in candidates:
-            if os.path.exists(path):
-                return path
-        raise FileNotFoundError("日本語フォントが見つかりません")
 
     @staticmethod
     def _draw_outlined_text(draw, pos, text, font, fill, outline, outline_width=3):

@@ -46,17 +46,15 @@ class YouTubeUploader:
         title: str,
         description: str = "",
         tags: list[str] | None = None,
-        publish_at: str | None = None,
         category_id: str = DEFAULT_CATEGORY_ID,
     ) -> tuple[str, str]:
-        """動画をYouTubeにアップロードする。
+        """動画をYouTubeにアップロードする（常に非公開。公開は手動で行う）。
 
         Args:
             video_path: 動画ファイルのパス
             title: 動画タイトル
             description: 動画の説明文
             tags: タグリスト（省略時はデフォルトタグ）
-            publish_at: 予約公開日時（ISO 8601形式、省略時は即時公開）
             category_id: YouTubeカテゴリID
 
         Returns:
@@ -86,9 +84,6 @@ class YouTubeUploader:
             },
         }
 
-        # publish_at は無視し、常に非公開のままアップロード
-        # 公開は手動で行う
-
         # Resumable upload
         media = MediaFileUpload(
             video_path,
@@ -100,8 +95,6 @@ class YouTubeUploader:
         print(f"[UPLOAD] アップロード開始: {video_path}")
         print(f"  タイトル: {title}")
         print(f"  公開設定: {privacy_status}")
-        if publish_at:
-            print(f"  予約公開: {publish_at}")
 
         request = self.youtube.videos().insert(
             part="snippet,status",
@@ -173,7 +166,6 @@ def main():
         video_path=args.video,
         title=args.title,
         description=args.description,
-        publish_at=publish_at,
     )
     print(f"\nDONE: {url} (video_id: {video_id})")
 

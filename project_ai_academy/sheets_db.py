@@ -13,8 +13,9 @@ import gspread
 from gspread.exceptions import WorksheetNotFound
 from datetime import datetime, date
 from typing import Optional
-import json
 import os
+
+from utils import safe_int as _safe_int
 
 # ===================================================================
 # 定数定義
@@ -37,14 +38,6 @@ SHEET_NEWS          = "📰 News"
 SHEET_MEMORY_L2     = "📖 Memory_L2"
 SHEET_CONFIG        = "⚙️ Config"
 SHEET_ANALYTICS     = "📈 Analytics"
-
-
-def _safe_int(val, default: int = 0) -> int:
-    """安全な int 変換。空文字列や None でもクラッシュしない"""
-    try:
-        return int(val)
-    except (ValueError, TypeError):
-        return default
 
 
 # ===================================================================
@@ -410,7 +403,7 @@ class SoulRebootDB:
         print(f"DONE: Memory_L2更新: 第{episode_data.get('話数')}話")
 
     # -------------------------------------------------------------------
-    # ユーティリティ
+    # コンテキストビルダー（プロンプト埋め込み用テキスト生成）
     # -------------------------------------------------------------------
 
     def build_l1_context(self) -> str:
@@ -620,6 +613,7 @@ class SoulRebootDB:
         try:
             ws = self._sheet(SHEET_ANALYTICS)
         except WorksheetNotFound:
+            print(f"  [WARN] シート '{SHEET_ANALYTICS}' が見つかりません。アナリティクスをスキップします。")
             return []
         records = ws.get_all_records()
         if not records:

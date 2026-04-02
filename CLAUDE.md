@@ -55,6 +55,6 @@ gh run list --repo insight00studio-web/soul-reboot --limit 5
 
 ## 注意事項
 
-- **GitHub Actions 無料枠**: 非公開リポジトリは月2,000分。1話あたり約80分消費するため、月25話超で超過する。超過時は GitHub Pro ($4/月) へアップグレードすること。
+- **GitHub Actions 無料枠**: 非公開リポジトリは月2,000分。1話あたり約80分消費するため、月25話超で超過する。
 - **CLAUDE_CODE_OAUTH_TOKEN**: 約36〜48時間で期限切れ。`update_token.ps1` で毎日更新が必要。
 - **GitHub Actions ランナーはエフェメラル**: 音声ファイルなどは毎回再生成される（スプレッドシートにパスが残っていてもファイルが存在しない場合は再生成する実装済み）。

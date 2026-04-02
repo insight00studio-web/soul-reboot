@@ -1,0 +1,39 @@
+# === 機密ファイル（絶対にコミットしない） ===
+# Google OAuth トークン
+project_ai_academy/token.json
+project_ai_academy/credentials.json
+project_ai_academy/youtube_token.json
+
+# 環境変数（APIキー等）
+.env
+project_ai_academy/.env
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+venv/
+.venv/
+env/
+.env/
+
+# === 生成物（大容量・再生成可能） ===
+project_ai_academy/assets/audio/
+project_ai_academy/assets/images/
+project_ai_academy/assets/thumbnails/
+project_ai_academy/videos/
+
+# === OS / IDE ===
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

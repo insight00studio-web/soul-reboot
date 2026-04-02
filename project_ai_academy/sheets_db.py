@@ -152,14 +152,29 @@ class SoulRebootDB:
             print("WARN: '話数'列が見つかりません")
             return 0
 
-        # 削除対象の行番号を逆順で収集（下から削除することでインデックスズレを防ぐ）
+        # 削除対象の行番号を収集（0-indexed で batchUpdate に渡す）
         rows_to_delete = [
             i + 1  # gspread は 1-indexed
             for i, row in enumerate(all_values[1:], start=1)
             if len(row) > ep_col_idx and row[ep_col_idx] == str(episode_number)
         ]
-        for row_idx in sorted(rows_to_delete, reverse=True):
-            ws.delete_rows(row_idx)
+        if rows_to_delete:
+            # 逆順にした deleteDimension リクエストを1回のバッチAPIコールで送信
+            # → 個別 delete_rows() の繰り返しによる Write 429 を回避
+            requests = [
+                {
+                    "deleteDimension": {
+                        "range": {
+                            "sheetId": ws.id,
+                            "dimension": "ROWS",
+                            "startIndex": row_idx - 1,  # 0-indexed
+                            "endIndex": row_idx,
+                        }
+                    }
+                }
+                for row_idx in sorted(rows_to_delete, reverse=True)
+            ]
+            ws.spreadsheet.batch_update({"requests": requests})
         print(f"DONE: Scripts削除: 第{episode_number}話 {len(rows_to_delete)}行")
         return len(rows_to_delete)
 

@@ -28,7 +28,7 @@ from dotenv import load_dotenv
 from sheets_db import SoulRebootDB
 from asset_generator import AssetGenerator
 from video_compiler import VideoCompiler
-from youtube_uploader import YouTubeUploader, get_next_publish_time
+from youtube_uploader import YouTubeUploader
 from notifier import notify_error, notify_youtube_uploaded, send_notification
 
 load_dotenv()
@@ -132,16 +132,13 @@ def main():
         else:
             current_step = "YouTubeアップロード"
             print(f"\n[STEP 4] YouTubeにアップロード中...")
-            publish_at = get_next_publish_time()
             uploader = YouTubeUploader()
             video_id, youtube_url = uploader.upload(
                 video_path=video_path,
                 title=video_title,
                 description=description,
-                publish_at=publish_at,
             )
             print(f"  YouTube URL: {youtube_url}")
-            print(f"  予約公開: {publish_at}")
 
             # サムネイル設定
             if video_id and thumbnail_path:

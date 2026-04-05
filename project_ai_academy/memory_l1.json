@@ -1,15 +1,3 @@
 {
-    "recent_episodes": [
-        {
-            "episode_number": 1,
-            "title": "100日後に君を忘れる。世界で一番残酷な入学式。",
-            "emotional_state": "シンジ：孤独から少しの希望へ。ナギサ：無執着、明るさ、死の予感。",
-            "key_events": [
-                "入学式での出会い",
-                "ナギサのAI警告の開示",
-                "100日カウントダウンの開始"
-            ],
-            "important_dialogue": "「私、人間でよかった！」「これから100日間、毎日よろしくね」"
-        }
-    ]
+    "recent_episodes": []
 }

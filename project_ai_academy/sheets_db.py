@@ -9,13 +9,15 @@ Soul Reboot - Google Spreadsheet DB アクセス層
   - 必要ファイル: credentials.json（Google Cloud ConsoleからDL）
 """
 
+from collections import Counter
+
 import gspread
 from gspread.exceptions import WorksheetNotFound
 from datetime import datetime, date
 from typing import Optional
 import os
 
-from utils import safe_int as _safe_int
+from utils import safe_int as _safe_int, extract_video_id as _extract_video_id
 
 # ===================================================================
 # 定数定義
@@ -436,53 +438,14 @@ class SoulRebootDB:
             )
         return "\n".join(lines)
 
-    # -------------------------------------------------------------------
-    # 削除メソッド（リセット用）
-    # -------------------------------------------------------------------
-
-    def delete_episode_scripts(self, episode_number: int) -> int:
-        """指定話数の台本行をScriptsシートから削除する"""
-        ws = self._sheet(SHEET_SCRIPTS)
-        records = ws.get_all_records()
-        rows = [i + 2 for i, r in enumerate(records)
-                if str(r.get("話数", "")) == str(episode_number)]
-        for idx in reversed(rows):
-            ws.delete_rows(idx)
-        print(f"DONE: Scripts削除: 第{episode_number}話 {len(rows)}行")
-        return len(rows)
-
-    def delete_episode_foreshadowing(self, episode_number: int) -> int:
-        """指定話数が追加した伏線をForeshadowingシートから削除する"""
-        ws = self._sheet(SHEET_FORESHADOWING)
-        records = ws.get_all_records()
-        rows = [i + 2 for i, r in enumerate(records)
-                if str(r.get("追加話数", "")) == str(episode_number)]
-        for idx in reversed(rows):
-            ws.delete_rows(idx)
-        print(f"DONE: Foreshadowing削除: 第{episode_number}話 {len(rows)}行")
-        return len(rows)
-
-    def delete_episode_parameters(self, episode_number: int) -> int:
-        """指定話数のパラメータ行をParametersシートから削除する"""
-        ws = self._sheet(SHEET_PARAMETERS)
-        records = ws.get_all_records()
-        rows = [i + 2 for i, r in enumerate(records)
-                if str(r.get("話数", "")) == str(episode_number)]
-        for idx in reversed(rows):
-            ws.delete_rows(idx)
-        print(f"DONE: Parameters削除: 第{episode_number}話 {len(rows)}行")
-        return len(rows)
-
-    def delete_episode_memory_l2(self, episode_number: int) -> int:
-        """指定話数のL2記憶行をMemory_L2シートから削除する"""
-        ws = self._sheet(SHEET_MEMORY_L2)
-        records = ws.get_all_records()
-        rows = [i + 2 for i, r in enumerate(records)
-                if str(r.get("話数", "")) == str(episode_number)]
-        for idx in reversed(rows):
-            ws.delete_rows(idx)
-        print(f"DONE: Memory_L2削除: 第{episode_number}話 {len(rows)}行")
-        return len(rows)
+    def get_recent_sentiments(self, limit: int = 50) -> list[str]:
+        """直近N件のコメントのAI感情分析結果を返す"""
+        try:
+            ws = self._sheet(SHEET_COMMENTS)
+            records = ws.get_all_records()
+        except WorksheetNotFound:
+            return []
+        return [r.get("AI感情分析", "") for r in records[-limit:] if r.get("AI感情分析")]
 
     def build_past_cliffhangers_context(self) -> str:
         """過去全話のクリフハンガー一覧を返す（重複防止用、プロンプト埋め込み用）"""
@@ -574,15 +537,12 @@ class SoulRebootDB:
         return "\n".join(lines)
 
     def get_parameter_targets(self, episode_number: int) -> dict:
-        """ロードマップに基づくパラメータ目標レンジを返す"""
+        """ロードマップに基づくパラメータ目標レンジを返す（29話設計）"""
         targets = {
-            (1, 10):   {"trust": (20, 50), "awakening": (0, 0)},
-            (11, 30):  {"trust": (50, 70), "awakening": (0, 15)},
-            (31, 50):  {"trust": (50, 70), "awakening": (15, 50)},
-            (51, 70):  {"trust": (30, 50), "awakening": (50, 75)},
-            (71, 85):  {"trust": (20, 30), "awakening": (75, 90)},
-            (86, 99):  {"trust": (10, 80), "awakening": (90, 100)},
-            (100, 100): {"trust": (0, 100), "awakening": (0, 100)},
+            (1,  9):  {"trust": (20, 50),  "awakening": (0,  0)},   # Day 01-09: 幸福な誤認
+            (10, 21): {"trust": (50, 70),  "awakening": (0, 40)},   # Day 10-21: 魂のノイズ
+            (22, 28): {"trust": (70, 100), "awakening": (40, 80)},  # Day 22-28: 聖域の崩壊
+            (29, 29): {"trust": (0, 100),  "awakening": (0, 100)},  # Day 29: 終着点
         }
         for (start, end), target in targets.items():
             if start <= episode_number <= end:
@@ -645,7 +605,6 @@ class SoulRebootDB:
 
     def get_video_ids_for_recent_episodes(self, limit: int = 3) -> list[dict]:
         """YouTube_URLが設定されている直近N話の話数とvideo_idを返す"""
-        import re
         ws = self._sheet(SHEET_EPISODES)
         records = ws.get_all_records()
         result = []
@@ -653,18 +612,7 @@ class SoulRebootDB:
             url = str(r.get("YouTube_URL", ""))
             if not url:
                 continue
-            video_id = None
-            match = re.search(r'youtu\.be/([a-zA-Z0-9_-]{11})', url)
-            if match:
-                video_id = match.group(1)
-            else:
-                match = re.search(r'[?&]v=([a-zA-Z0-9_-]{11})', url)
-                if match:
-                    video_id = match.group(1)
-                else:
-                    match = re.search(r'youtube\.com/video/([a-zA-Z0-9_-]{11})', url)
-                    if match:
-                        video_id = match.group(1)
+            video_id = _extract_video_id(url)
             if video_id:
                 result.append({
                     "episode_number": _safe_int(r.get("話数", 0)),
@@ -736,18 +684,11 @@ class SoulRebootDB:
             )
 
         # コメント傾向サマリー（最新50件の感情分析から）
-        try:
-            ws = self._sheet(SHEET_COMMENTS)
-            records = ws.get_all_records()
-        except WorksheetNotFound:
-            records = []
-        if records:
-            sentiments = [r.get("AI感情分析", "") for r in records[-50:] if r.get("AI感情分析")]
-            if sentiments:
-                from collections import Counter
-                counts = Counter(sentiments)
-                total = sum(counts.values())
-                trend_parts = [f"{s}{c*100//total}%" for s, c in counts.most_common(4)]
-                lines.append(f"  コメント傾向: {' / '.join(trend_parts)}")
+        sentiments = self.get_recent_sentiments(limit=50)
+        if sentiments:
+            counts = Counter(sentiments)
+            total = sum(counts.values())
+            trend_parts = [f"{s}{c*100//total}%" for s, c in counts.most_common(4)]
+            lines.append(f"  コメント傾向: {' / '.join(trend_parts)}")
 
         return "\n".join(lines)

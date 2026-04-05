@@ -15,6 +15,7 @@ Soul Reboot - Gmail通知モジュール
 """
 
 import os
+import re
 import smtplib
 from email.mime.text import MIMEText
 
@@ -94,7 +95,6 @@ def notify_success(
 
 def _sanitize_error(error: Exception) -> str:
     """エラーメッセージから内部パスを除去する"""
-    import re
     msg = f"{type(error).__name__}: {error}"
     # Unix系パス（GitHub Actions等）とWindowsパスをマスク
     msg = re.sub(r"(/home/runner/work|/tmp|C:\\Users\\[^\s\\]+)[^\s\"']*", "<path>", msg)

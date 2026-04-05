@@ -26,6 +26,7 @@ import json
 import os
 import sys
 import time
+from collections import Counter
 from datetime import date, datetime
 
 from dotenv import load_dotenv
@@ -57,6 +58,11 @@ def load_prompt(filename: str) -> str:
     path = os.path.join(PROMPTS_DIR, filename)
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
+
+
+def _safe_encode(text: str, length: int = 9999) -> str:
+    """cp932等のターミナルで表示できない文字をエスケープする"""
+    return text[:length].encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8")
 
 
 def _summarize_scene_plan(scene_plan: list) -> str:
@@ -521,7 +527,7 @@ def step_writer(db: SoulRebootDB, _config: dict, episode_number: int, plot: dict
         print(f"  → {len(script_lines)}行の台本を生成・記録しました")
         return mapped_lines
     else:
-        print("  ⚠️ 台本生成に失敗しました")
+        print("  WARN: 台本生成に失敗しました")
         return []
 
 
@@ -658,10 +664,7 @@ def _calculate_viewer_delta(db: SoulRebootDB) -> dict | None:
     engagement = float(latest.get("エンゲージメント率", 0)) if latest.get("エンゲージメント率") else 0
 
     # コメント感情の集計（直近50件）
-    from sheets_db import SHEET_COMMENTS
-    ws = db._sheet(SHEET_COMMENTS)
-    records = ws.get_all_records()
-    recent_sentiments = [r.get("AI感情分析", "") for r in records[-50:] if r.get("AI感情分析")]
+    recent_sentiments = db.get_recent_sentiments(limit=50)
 
     if not recent_sentiments:
         # エンゲージメントのみで判断
@@ -669,7 +672,6 @@ def _calculate_viewer_delta(db: SoulRebootDB) -> dict | None:
             return {"trust": 0, "awakening": 0, "record": 1, "reason": f"高エンゲージメント{engagement:.1f}%"}
         return None
 
-    from collections import Counter
     counts = Counter(recent_sentiments)
     total = sum(counts.values())
 
@@ -808,16 +810,12 @@ def step_finalize(db: SoulRebootDB, episode_number: int, plot: dict,
     else:
         print(f"  [FORCE再生成] CURRENT_EPISODE は変更しません")
 
-    def _safe(text: str, length: int = 9999) -> str:
-        """cp932等のターミナルで表示できない文字をエスケープする"""
-        return text[:length].encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8")
-
     # 完了レポート
     print("\n" + "=" * 60)
     print(f"DONE: 第{episode_number}話 生成完了！")
-    print(f"   タイトル: {_safe(str(plot.get('title', '')))}")
-    print(f"   感情曲線: {_safe(str(plot.get('emotional_curve', '')))}")
-    print(f"   クリフハンガー: {_safe(plot.get('cliffhanger', ''), 40)}...")
+    print(f"   タイトル: {_safe_encode(str(plot.get('title', '')))}")
+    print(f"   感情曲線: {_safe_encode(str(plot.get('emotional_curve', '')))}")
+    print(f"   クリフハンガー: {_safe_encode(plot.get('cliffhanger', ''), 40)}...")
     if analytics_summary and analytics_summary.get("episodes_fetched", 0) > 0:
         print(f"   Analytics: {analytics_summary['episodes_fetched']}話分収集 / 新規コメント{analytics_summary.get('comments_collected', 0)}件")
     print(f"\n[次のアクション] スプレッドシートを確認してください:")

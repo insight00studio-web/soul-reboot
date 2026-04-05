@@ -123,7 +123,6 @@ def main():
         else:
             print("  WARN: サムネイル生成失敗（スキップ）")
 
-        # --- STEP 4: YouTube アップロード ---
         description = _build_description(episode_number, title, cliffhanger)
 
         # --- STEP 4: Google Drive バックアップ ---

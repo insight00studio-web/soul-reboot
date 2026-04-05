@@ -71,6 +71,19 @@ def parse_json_robust(text: str) -> dict:
 # Gemini API クライアント
 # ===================================================================
 
+_genai_client: "genai.Client | None" = None
+
+
+def _get_genai_client(api_key: str = "") -> "genai.Client":
+    """module-level シングルトンクライアントを返す（毎呼び出しの生成を回避）"""
+    global _genai_client
+    if not api_key:
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+    if _genai_client is None:
+        _genai_client = genai.Client(api_key=api_key)
+    return _genai_client
+
+
 def call_gemini(prompt: str, model_name: str = "gemini-3-flash-preview",
                 response_format: str = "json",
                 api_key: str = "") -> dict | str:
@@ -79,9 +92,7 @@ def call_gemini(prompt: str, model_name: str = "gemini-3-flash-preview",
     response_format="json" の場合、JSONをパースして返す。
     response_format="text" の場合、テキストをそのまま返す。
     """
-    if not api_key:
-        api_key = os.environ.get("GEMINI_API_KEY", "")
-    client = genai.Client(api_key=api_key)
+    client = _get_genai_client(api_key)
 
     gen_config = types.GenerateContentConfig(temperature=0.8)
     if response_format == "json":

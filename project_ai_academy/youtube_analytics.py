@@ -15,13 +15,11 @@ YouTube Data API v3 を使用して以下を収集する:
 """
 
 import sys
-from datetime import date
 
 from googleapiclient.errors import HttpError
 
 from youtube_auth import get_youtube_client
 from llm_client import call_opus
-from utils import extract_video_id
 
 
 class YouTubeAnalytics:
@@ -95,9 +93,6 @@ class YouTubeAnalytics:
             return comments
 
         except HttpError as e:
-            error_reason = ""
-            if hasattr(e, "error_details") and e.error_details:
-                error_reason = str(e.error_details)
             # コメント無効の動画は空リストを返す
             if "commentsDisabled" in str(e) or "forbidden" in str(e).lower():
                 print(f"  [INFO] 動画 {video_id} のコメントは無効です")
@@ -162,7 +157,7 @@ def analyze_comments_sentiment(comments: list[dict]) -> list[dict]:
 以下のコメントを分析し、JSON配列で結果を返してください。
 
 ## チャンネル概要
-「Soul Reboot - 100日後の君へ -」は、AIと人間の100日間を描く連載アニメです。
+「Soul Reboot - 29日後の君へ -」は、AIと人間の29日間を描く連載アニメです。
 主人公シンジ（人間）とヒロインのナギサ（AI）の物語で、視聴者コメントが物語展開に影響を与えます。
 
 ## 分析基準
@@ -213,9 +208,6 @@ def analyze_comments_sentiment(comments: list[dict]) -> list[dict]:
 
     return comments
 
-
-# extract_video_id は utils.py に移動済み（後方互換のため re-export）
-# from utils import extract_video_id  # ファイル先頭で既にインポート済み
 
 
 # ===================================================================

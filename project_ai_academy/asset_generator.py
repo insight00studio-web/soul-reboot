@@ -55,7 +55,7 @@ class AssetGenerator:
 
         # --- IMAGE GENERATION: キャラクター固定プロンプト ---
         self.char_image_base = {
-            "NAGISA": "1girl, long black hair, sapphire blue eyes, long hair, beautiful detailed eyes, expressionless, kuudere, upper body",
+            "NAGISA": "1girl, long black hair, sapphire blue eyes, long hair, beautiful detailed eyes, tsundere, upper body",
             "SHINJI": "1boy, messy brown hair, black eyes, soft expression, young male",
         }
 
@@ -507,6 +507,15 @@ class AssetGenerator:
         # シーンごとの画像プロンプトを追跡（同じシーンで重複生成しないため）
         processed_scenes = set()
 
+        # シーンごとの全話者を事前収集（NARRATORシーンでもキャラ登場を検出するため）
+        scene_all_speakers: dict[int, list[str]] = {}
+        for line in scripts:
+            sn = int(line.get("シーン番号", 1))
+            sp = line.get("話者", "")
+            scene_all_speakers.setdefault(sn, [])
+            if sp:
+                scene_all_speakers[sn].append(sp)
+
         for line in scripts:
             if limit is not None and gen_count >= limit:
                 print(f"  Reached limit of {limit} generations. Stopping.")
@@ -517,13 +526,13 @@ class AssetGenerator:
             text = line.get("セリフ・地の文", "")
             tone = line.get("感情トーン", "通常")
             img_prompt = line.get("画像プロンプト", "")
-            
+
             # --- 画像生成 ---
             # シーンの最初の行に画像プロンプトがある場合のみ生成
             if img_prompt and scene_num not in processed_scenes:
-                # 既にAssetsシートに登録されているか確認（簡易。本来はSheetsDB側でチェックしたい）
-                # ここでは常に生成して上書きor追加する（暫定）
-                img_path = self.generate_image(img_prompt, ep_num, scene_num, speaker=speaker, awakening=awakening)
+                # シーン内の全話者を結合して渡す（NARRATOR話者でもキャラが映るシーンを正しく検出）
+                all_speakers_in_scene = " ".join(scene_all_speakers.get(scene_num, [speaker]))
+                img_path = self.generate_image(img_prompt, ep_num, scene_num, speaker=all_speakers_in_scene, awakening=awakening)
                 if img_path:
                     self.db.register_asset(
                         episode_number=ep_num,

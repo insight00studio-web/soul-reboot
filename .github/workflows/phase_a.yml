@@ -3,7 +3,22 @@ name: "Soul Reboot - Phase A (台本生成)"
 on:
   schedule:
     - cron: "0 8 * * *" # UTC 08:00 = JST 17:00
-  workflow_dispatch: # 手動実行も可能
+  workflow_dispatch:
+    inputs:
+      episode:
+        description: "エピソード番号（省略時はConfigの CURRENT_EPISODE を使用）"
+        required: false
+        type: number
+      force:
+        description: "既存台本を削除して再生成（--force）"
+        required: false
+        type: boolean
+        default: false
+      skip_phase_b:
+        description: "Phase B の自動トリガーをスキップ"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -48,7 +63,15 @@ jobs:
           SOUL_REBOOT_SPREADSHEET_ID: ${{ secrets.SOUL_REBOOT_SPREADSHEET_ID }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: python autonomous_engine.py
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.episode }}" ]; then
+            ARGS="$ARGS --episode ${{ inputs.episode }}"
+          fi
+          if [ "${{ inputs.force }}" = "true" ]; then
+            ARGS="$ARGS --force"
+          fi
+          python autonomous_engine.py $ARGS
 
       - name: Set episode output
         id: episode
@@ -56,6 +79,7 @@ jobs:
         run: echo "episode=$(cat episode_number.txt)" >> $GITHUB_OUTPUT
 
       - name: Trigger Phase B (公開パイプライン)
+        if: ${{ inputs.skip_phase_b != true }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh workflow run phase_b.yml --repo ${{ github.repository }} -f episode=${{ steps.episode.outputs.episode }}

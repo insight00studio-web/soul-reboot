@@ -28,7 +28,8 @@ from dotenv import load_dotenv
 from sheets_db import SoulRebootDB
 from asset_generator import AssetGenerator
 from video_compiler import VideoCompiler
-from youtube_uploader import YouTubeUploader
+from youtube_uploader import YouTubeUploader, get_next_publish_time
+from drive_uploader import DriveUploader
 from notifier import notify_error, notify_youtube_uploaded, send_notification
 
 load_dotenv()
@@ -125,28 +126,54 @@ def main():
         # --- STEP 4: YouTube アップロード ---
         description = _build_description(episode_number, title, cliffhanger)
 
+        # --- STEP 4: Google Drive バックアップ ---
+        drive_folder_id = os.environ.get("SOUL_REBOOT_DRIVE_FOLDER_ID", "")
+        drive_url = ""
+        current_step = "Google Driveアップロード"
+        print(f"\n[STEP 4] Google Driveにバックアップ中...")
+        try:
+            drive_uploader = DriveUploader()
+            drive_url = drive_uploader.upload(
+                file_path=video_path,
+                ep_num=episode_number,
+                title=title,
+                folder_id=drive_folder_id,
+            )
+            print(f"  Drive URL: {drive_url}")
+            db.register_asset(
+                episode_number=episode_number,
+                scene_number=0,
+                asset_type="VIDEO_DRIVE",
+                file_path=drive_url,
+            )
+        except Exception as drive_err:
+            print(f"  WARN: Google Driveアップロード失敗（スキップ）: {drive_err}")
+
         video_id = ""
         youtube_url = ""
+        publish_at = get_next_publish_time()
         if args.skip_upload:
-            print(f"\n[STEP 4] YouTubeアップロードをスキップ")
+            print(f"\n[STEP 5] YouTubeアップロードをスキップ")
         else:
             current_step = "YouTubeアップロード"
-            print(f"\n[STEP 4] YouTubeにアップロード中...")
+            print(f"\n[STEP 5] YouTubeにアップロード中...")
+            print(f"  予約公開: {publish_at} (翌朝06:00 JST)")
             uploader = YouTubeUploader()
             video_id, youtube_url = uploader.upload(
                 video_path=video_path,
                 title=video_title,
                 description=description,
+                publish_at=publish_at,
             )
             print(f"  YouTube URL: {youtube_url}")
 
             # サムネイル設定
             if video_id and thumbnail_path:
                 current_step = "サムネイル設定"
-                print(f"\n[STEP 4.5] サムネイルを設定中...")
+                print(f"\n[STEP 5.5] サムネイルを設定中...")
                 uploader.set_thumbnail(video_id, thumbnail_path)
 
-        # --- STEP 5: 完了通知 ---
+        # --- STEP 6: 完了通知 ---
         current_step = "完了通知"
         elapsed = time.time() - start_time
         mins, secs = divmod(int(elapsed), 60)
@@ -184,7 +211,7 @@ def _build_description(episode_number: int, title: str, cliffhanger: str) -> str
     lines = [
         f"Soul Reboot 第{episode_number}話「{title}」",
         "",
-        "AIが100日間、毎日自動で物語を紡ぐ実験的プロジェクト。",
+        "AIが、毎日自動で物語を紡ぐ実験的プロジェクト。",
         "ナギサとシンジの運命は、あなたのコメントで変わる。",
         "",
     ]

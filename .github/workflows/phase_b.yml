@@ -40,11 +40,15 @@ jobs:
         run: |
           echo "${{ secrets.YOUTUBE_TOKEN_JSON }}" | base64 -d > project_ai_academy/youtube_token.json
 
+      - name: Setup Google Drive credentials
+        run: echo "${{ secrets.DRIVE_TOKEN_JSON }}" | base64 -d > project_ai_academy/drive_token.json
+
       - name: Run Phase B (公開パイプライン)
         working-directory: project_ai_academy
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SOUL_REBOOT_SPREADSHEET_ID: ${{ secrets.SOUL_REBOOT_SPREADSHEET_ID }}
+          SOUL_REBOOT_DRIVE_FOLDER_ID: ${{ secrets.SOUL_REBOOT_DRIVE_FOLDER_ID }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: |

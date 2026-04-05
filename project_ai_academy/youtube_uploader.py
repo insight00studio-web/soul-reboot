@@ -47,8 +47,9 @@ class YouTubeUploader:
         description: str = "",
         tags: list[str] | None = None,
         category_id: str = DEFAULT_CATEGORY_ID,
+        publish_at: str | None = None,
     ) -> tuple[str, str]:
-        """動画をYouTubeにアップロードする（常に非公開。公開は手動で行う）。
+        """動画をYouTubeにアップロードする。
 
         Args:
             video_path: 動画ファイルのパス
@@ -56,6 +57,9 @@ class YouTubeUploader:
             description: 動画の説明文
             tags: タグリスト（省略時はデフォルトタグ）
             category_id: YouTubeカテゴリID
+            publish_at: 予約公開日時（ISO 8601形式、例: "2026-04-06T06:00:00+09:00"）
+                        指定時は privacyStatus=private のまま YouTube が自動公開する。
+                        省略時は非公開のままアップロード。
 
         Returns:
             (video_id, youtube_url) のタプル
@@ -66,8 +70,12 @@ class YouTubeUploader:
         if tags is None:
             tags = DEFAULT_TAGS.copy()
 
-        # プライバシー設定（常に非公開でアップロード）
-        privacy_status = "private"
+        status_body: dict = {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": False,
+        }
+        if publish_at:
+            status_body["publishAt"] = publish_at
 
         body = {
             "snippet": {
@@ -78,10 +86,7 @@ class YouTubeUploader:
                 "defaultLanguage": "ja",
                 "defaultAudioLanguage": "ja",
             },
-            "status": {
-                "privacyStatus": privacy_status,
-                "selfDeclaredMadeForKids": False,
-            },
+            "status": status_body,
         }
 
         # Resumable upload
@@ -94,7 +99,10 @@ class YouTubeUploader:
 
         print(f"[UPLOAD] アップロード開始: {video_path}")
         print(f"  タイトル: {title}")
-        print(f"  公開設定: {privacy_status}")
+        if publish_at:
+            print(f"  予約公開: {publish_at}")
+        else:
+            print(f"  公開設定: 非公開（手動公開）")
 
         request = self.youtube.videos().insert(
             part="snippet,status",

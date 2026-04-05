@@ -2,7 +2,7 @@ name: "Soul Reboot - Phase A (台本生成)"
 
 on:
   schedule:
-    - cron: "10 17 * * *" # UTC 17:10 = JST 02:10 (リセット後バッファ)
+    - cron: "0 8 * * *" # UTC 08:00 = JST 17:00
   workflow_dispatch: # 手動実行も可能
 
 permissions:

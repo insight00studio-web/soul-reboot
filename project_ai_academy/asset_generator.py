@@ -231,18 +231,30 @@ class AssetGenerator:
                     )
                 )
                 
+                # レスポンスの妥当性チェック（Noneや空candidatesはリトライ）
+                if response is None or not response.candidates:
+                    print(f"    WARN: Empty response (Attempt {attempt+1}/{_MAX_RETRIES}). Retrying...")
+                    time.sleep(_TTS_RETRY_WAIT_429)
+                    continue
+                content_obj = response.candidates[0].content
+                if content_obj is None or not content_obj.parts:
+                    print(f"    WARN: No content in response (Attempt {attempt+1}/{_MAX_RETRIES}). Retrying...")
+                    time.sleep(_TTS_RETRY_WAIT_429)
+                    continue
+
                 # 音声データの取得
                 audio_data = None
                 mime_type = None
-                for part in response.candidates[0].content.parts:
+                for part in content_obj.parts:
                     if part.inline_data:
                         audio_data = part.inline_data.data
                         mime_type = part.inline_data.mime_type
                         break
                 
                 if not audio_data:
-                    print("    ERROR: No audio data in response")
-                    return ""
+                    print(f"    WARN: No audio data in response (Attempt {attempt+1}/{_MAX_RETRIES}). Retrying...")
+                    time.sleep(_TTS_RETRY_WAIT_429)
+                    continue
                 
                 # 保存
                 ep_dir = self.assets_dir / "audio" / f"ep{ep_num:03d}"

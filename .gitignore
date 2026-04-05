@@ -3,6 +3,7 @@
 project_ai_academy/token.json
 project_ai_academy/credentials.json
 project_ai_academy/youtube_token.json
+project_ai_academy/drive_token.json
 
 # 環境変数（APIキー等）
 .env

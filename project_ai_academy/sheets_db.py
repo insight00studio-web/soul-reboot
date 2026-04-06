@@ -310,11 +310,18 @@ class SoulRebootDB:
             result = [r for r in result if r.get("対象話数") == episode_number]
         return result
 
+    # スパム・不適切として除外するカテゴリ
+    _EXCLUDED_SENTIMENTS = {"スパム", "不適切"}
+
     def get_top_pending_comments(self, limit: int = 3) -> list[dict]:
-        """ai_adoption_scoreの高い未処理コメントをlimit件返す"""
+        """adoption_scoreの高い未処理コメントをlimit件返す。スパム・不適切は除外する"""
         ws = self._sheet(SHEET_COMMENTS)
         records = ws.get_all_records()
-        pending = [r for r in records if r.get("採用ステータス") == "PENDING"]
+        pending = [
+            r for r in records
+            if r.get("採用ステータス") == "PENDING"
+            and r.get("AI感情分析", "") not in self._EXCLUDED_SENTIMENTS
+        ]
         # スコア降順ソート
         pending.sort(key=lambda x: _safe_int(x.get("採用スコア", 0)), reverse=True)
         return pending[:limit]

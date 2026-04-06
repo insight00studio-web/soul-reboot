@@ -19,6 +19,19 @@ if (-not (Test-Path $credsPath)) {
     exit 1
 }
 
+Write-Host ""
+Write-Host "=== Soul Reboot Token Update ===" -ForegroundColor Cyan
+
+# claude コマンドで API コールを行い、トークンを強制リフレッシュする
+Write-Host "Refreshing Claude token..." -ForegroundColor Yellow
+$claudeOutput = claude -p "ok" --output-format text 2>&1
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "OK: Token refreshed." -ForegroundColor Green
+} else {
+    Write-Host "WARN: Token refresh failed. Using existing token." -ForegroundColor Yellow
+}
+
+# リフレッシュ後に credentials.json を読み直す
 $creds = Get-Content $credsPath | ConvertFrom-Json
 $token = $creds.claudeAiOauth.accessToken
 $expiresAt = $creds.claudeAiOauth.expiresAt
@@ -33,8 +46,6 @@ $expiryDate = [DateTimeOffset]::FromUnixTimeMilliseconds($expiresAt).LocalDateTi
 $now = Get-Date
 $remainingHours = [math]::Round(($expiryDate - $now).TotalHours, 1)
 
-Write-Host ""
-Write-Host "=== Soul Reboot Token Update ===" -ForegroundColor Cyan
 Write-Host "Token : $($token.Substring(0, 30))..."
 Write-Host "Expiry: $($expiryDate.ToString('yyyy/MM/dd HH:mm')) ($remainingHours hours remaining)"
 

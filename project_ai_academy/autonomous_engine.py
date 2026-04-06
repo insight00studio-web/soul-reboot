@@ -252,7 +252,8 @@ def step_collect_analytics(db: SoulRebootDB, config: dict) -> dict:
     total_new_comments = 0
 
     for ep in recent_episodes:
-        raw_comments = yt.get_comments(ep["video_id"], max_results=50)
+        comment_fetch_count = safe_int(config.get("COMMENT_FETCH_COUNT", 50), 50)
+        raw_comments = yt.get_comments(ep["video_id"], max_results=comment_fetch_count)
         # 重複除外
         new_comments = [c for c in raw_comments if c.get("comment_id") not in existing_ids]
 
@@ -538,7 +539,7 @@ def step_architect(db: SoulRebootDB, config: dict,
 # STEP 4: Writer - 台本生成
 # ===================================================================
 
-def step_writer(db: SoulRebootDB, _config: dict, episode_number: int, plot: dict) -> list[dict]:
+def step_writer(db: SoulRebootDB, config: dict, episode_number: int, plot: dict) -> list[dict]:
     """
     Writerプロンプトにプロットを注入し、Geminiに台本を生成させ、
     Scriptsシートに書き込む（approved=FALSE）。
@@ -579,7 +580,7 @@ def step_writer(db: SoulRebootDB, _config: dict, episode_number: int, plot: dict
 冒頭は必ず衝撃的なフックから始めること。
 """
 
-    model_name = "gemini-3.1-pro-preview"
+    model_name = config.get("GEMINI_MODEL", "gemini-3.1-pro-preview")
     script_lines = call_gemini(full_prompt, model_name=model_name, response_format="json")
 
     if isinstance(script_lines, list):

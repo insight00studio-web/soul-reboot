@@ -27,7 +27,7 @@ import os
 import sys
 import time
 from collections import Counter
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
 
@@ -36,6 +36,7 @@ from notifier import notify_success, notify_error
 from youtube_analytics import YouTubeAnalytics, analyze_comments_sentiment
 from llm_client import call_gemini, call_opus, parse_json_robust
 from utils import safe_int
+from event_calendar import get_event_on_date
 
 # .envファイルから環境変数を読み込む（プロジェクトルートにある場合）
 load_dotenv()
@@ -281,7 +282,9 @@ def step_score_comments(db: SoulRebootDB) -> list[dict]:
 def _build_architect_prompt(db: SoulRebootDB, config: dict,
                              episode_number: int, news: list[dict],
                              top_comments: list[dict],
-                             quality_feedback: str = "") -> str:
+                             quality_feedback: str = "",
+                             publish_date: date | None = None,
+                             event_name: str | None = None) -> str:
     """Architectに渡すプロンプト文字列を構築する"""
     architect_base = load_prompt("architect_prompt.md")
     l1_context = db.build_l1_context()
@@ -324,6 +327,16 @@ def _build_architect_prompt(db: SoulRebootDB, config: dict,
     )
 
     today = date.today().isoformat()
+    pub_date_str = publish_date.isoformat() if publish_date else today
+
+    event_section = f"""
+---
+## 公開日イベント（重要）
+
+公開日（{pub_date_str}）は「**{event_name}**」です。
+物語の流れを壊さず、キャラクターたちがこのイベントを自然に認識・体験する形で台本に織り込んでください。
+強引にイベントを前面に出す必要はありませんが、雰囲気・セリフ・小道具などに反映させてください。
+""" if event_name else ""
 
     feedback_section = f"""
 ---
@@ -339,7 +352,8 @@ def _build_architect_prompt(db: SoulRebootDB, config: dict,
 ---
 ## 今回の生成情報
 
-- **現実の日付**: {today}
+- **台本生成日**: {today}
+- **公開予定日**: {pub_date_str}{"（" + event_name + "）" if event_name else ""}
 - **エピソード番号**: 第{episode_number}話
 - **フェーズ**: {config.get('PHASE', 'PHASE_1')}
 
@@ -365,6 +379,7 @@ def _build_architect_prompt(db: SoulRebootDB, config: dict,
 {comment_context}
 
 {analytics_context}
+{event_section}
 {feedback_section}
 ---
 ## 出力フォーマット（JSON形式で出力してください）
@@ -415,8 +430,16 @@ def step_architect(db: SoulRebootDB, config: dict,
     """
     print(f"\n[ARCHITECT] STEP 3: Architect - 第{episode_number}話プロット生成...")
 
+    # 公開予定日の計算（REAL_DATE_OFFSET_DAYS 分だけ先の日付）
+    offset_days = int(config.get("REAL_DATE_OFFSET_DAYS", 0))
+    publish_date = date.today() + timedelta(days=offset_days)
+    event_name = get_event_on_date(publish_date)
+    if event_name:
+        print(f"  [ARCHITECT] 公開日イベント検知: {publish_date} = {event_name}")
+
     full_prompt = _build_architect_prompt(
-        db, config, episode_number, news, top_comments, quality_feedback
+        db, config, episode_number, news, top_comments, quality_feedback,
+        publish_date=publish_date, event_name=event_name,
     )
 
     max_json_retries = 2
@@ -437,10 +460,9 @@ def step_architect(db: SoulRebootDB, config: dict,
                 raise RuntimeError(f"Architectの応答が{max_json_retries + 1}回連続でJSON不正。手動再実行してください。")
 
     # Episodesシートに書き込む
-    today_str = date.today().isoformat()
     episode_row = {
         "話数": episode_number,
-        "公開日": today_str,
+        "公開日": publish_date.isoformat(),
         "物語内の日数": episode_number,
         "フェーズ": config.get("PHASE", "PHASE_1"),
         "タイトル案": plot.get("title", ""),

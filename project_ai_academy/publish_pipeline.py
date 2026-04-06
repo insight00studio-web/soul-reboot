@@ -28,7 +28,8 @@ from dotenv import load_dotenv
 from sheets_db import SoulRebootDB
 from asset_generator import AssetGenerator
 from video_compiler import VideoCompiler
-from youtube_uploader import YouTubeUploader, get_next_publish_time
+from youtube_uploader import YouTubeUploader
+from datetime import datetime, timedelta, timezone
 from drive_uploader import DriveUploader
 from notifier import notify_error, notify_youtube_uploaded, send_notification
 
@@ -150,7 +151,23 @@ def main():
 
         video_id = ""
         youtube_url = ""
-        publish_at = get_next_publish_time()
+        JST = timezone(timedelta(hours=9))
+        pub_date_str = episode_info.get("公開日", "")
+        try:
+            pub_date = datetime.strptime(pub_date_str, "%Y-%m-%d").replace(
+                hour=6, minute=0, second=0, tzinfo=JST
+            )
+            # 過去日時なら翌日06:00にフォールバック
+            if pub_date < datetime.now(JST):
+                pub_date = datetime.now(JST).replace(
+                    hour=6, minute=0, second=0, microsecond=0
+                ) + timedelta(days=1)
+        except (ValueError, TypeError):
+            pub_date = datetime.now(JST).replace(
+                hour=6, minute=0, second=0, microsecond=0
+            ) + timedelta(days=1)
+        publish_at = pub_date.isoformat()
+
         if args.skip_upload:
             print(f"\n[STEP 5] YouTubeアップロードをスキップ")
         else:

@@ -57,12 +57,15 @@ if ($remainingHours -lt 2) {
 
 Write-Host ""
 Write-Host "Updating GitHub Secret..." -ForegroundColor Yellow
-gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo insight00studio-web/soul-reboot --body $token
+
+# 認証情報ファイル全体（refreshToken含む）をアップロード → GitHub Actions で自動更新可能
+$credsBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((Get-Content $credsPath -Raw)))
+gh secret set CLAUDE_CREDENTIALS_JSON --repo insight00studio-web/soul-reboot --body $credsBase64
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "OK: CLAUDE_CODE_OAUTH_TOKEN updated." -ForegroundColor Green
+    Write-Host "OK: CLAUDE_CREDENTIALS_JSON updated." -ForegroundColor Green
 } else {
-    Write-Host "ERROR: CLAUDE_CODE_OAUTH_TOKEN update failed. Make sure gh command is installed." -ForegroundColor Red
+    Write-Host "ERROR: CLAUDE_CREDENTIALS_JSON update failed. Make sure gh command is installed." -ForegroundColor Red
 }
 
 # --- Google Token Update ---

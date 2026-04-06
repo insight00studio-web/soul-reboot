@@ -28,10 +28,14 @@ jobs:
       - name: Setup YouTube credentials
         run: echo "${{ secrets.YOUTUBE_TOKEN_JSON }}" | base64 -d > project_ai_academy/youtube_token.json
 
+      - name: Setup Claude credentials
+        run: |
+          mkdir -p ~/.claude
+          echo "${{ secrets.CLAUDE_CREDENTIALS_JSON }}" | base64 -d > ~/.claude/.credentials.json
+
       - name: Check token validity
         working-directory: project_ai_academy
         env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           SOUL_REBOOT_SPREADSHEET_ID: ${{ secrets.SOUL_REBOOT_SPREADSHEET_ID }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}

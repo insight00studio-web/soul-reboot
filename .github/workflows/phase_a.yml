@@ -54,11 +54,15 @@ jobs:
       - name: Setup YouTube credentials (Analytics読み取り用)
         run: echo "${{ secrets.YOUTUBE_TOKEN_JSON }}" | base64 -d > project_ai_academy/youtube_token.json
 
+      - name: Setup Claude credentials
+        run: |
+          mkdir -p ~/.claude
+          echo "${{ secrets.CLAUDE_CREDENTIALS_JSON }}" | base64 -d > ~/.claude/.credentials.json
+
       - name: Run Phase A (台本生成)
         id: phase_a
         working-directory: project_ai_academy
         env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SOUL_REBOOT_SPREADSHEET_ID: ${{ secrets.SOUL_REBOOT_SPREADSHEET_ID }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}

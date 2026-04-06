@@ -51,13 +51,27 @@ def check_youtube_token() -> tuple[bool, str]:
 
 
 def check_claude_token() -> tuple[bool, str]:
-    """Claude OAuth トークンの存在確認（36〜48時間で失効するため要毎日更新）"""
-    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
-    if not token:
-        return False, "CLAUDE_CODE_OAUTH_TOKEN が未設定です"
-    # OAuth トークンは REST API では検証不可のため存在確認のみ
-    # 有効期限は36〜48時間のため update_token.ps1 を毎日実行してください
-    return True, "設定済み（有効期限36〜48時間 → update_token.ps1 を毎日実行）"
+    """Claude OAuth 認証情報ファイルの存在・有効期限チェック"""
+    import json
+    import time
+
+    creds_path = Path.home() / ".claude" / ".credentials.json"
+    if not creds_path.exists():
+        return False, ".credentials.json が見つかりません（CLAUDE_CREDENTIALS_JSON Secret を確認してください）"
+    try:
+        creds = json.loads(creds_path.read_text())
+        oauth = creds.get("claudeAiOauth", {})
+        refresh_token = oauth.get("refreshToken", "")
+        expires_at_ms = oauth.get("expiresAt", 0)
+        if not refresh_token:
+            return False, "refreshToken が見つかりません"
+        remaining_hours = (expires_at_ms / 1000 - time.time()) / 3600
+        if remaining_hours < 0:
+            # access token 期限切れだが refresh token があれば Claude Code が自動更新する
+            return True, f"accessToken 期限切れ（{abs(remaining_hours):.1f}時間前）→ refreshToken で自動更新されます"
+        return True, f"有効（残り {remaining_hours:.1f} 時間）、refreshToken あり"
+    except Exception as e:
+        return False, f"認証情報の読み取りエラー: {e}"
 
 
 def main() -> None:

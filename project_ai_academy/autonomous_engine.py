@@ -477,9 +477,8 @@ def step_architect(db: SoulRebootDB, config: dict,
     """
     print(f"\n[ARCHITECT] STEP 3: Architect - 第{episode_number}話プロット生成...")
 
-    # 公開予定日の計算（REAL_DATE_OFFSET_DAYS 分だけ先の日付）
-    offset_days = int(config.get("REAL_DATE_OFFSET_DAYS", 0))
-    publish_date = date.today() + timedelta(days=offset_days)
+    # 公開予定日の計算（エピソード番号から確定的に算出 = 生成タイミングに依存しない）
+    publish_date = _STORY_START + timedelta(days=episode_number - 1)
     event_name = get_event_on_date(publish_date)
     if event_name:
         print(f"  [ARCHITECT] 公開日イベント検知: {publish_date} = {event_name}")

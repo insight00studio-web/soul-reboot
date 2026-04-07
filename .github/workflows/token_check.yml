@@ -40,3 +40,11 @@ jobs:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: python token_check.py
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          rm -f project_ai_academy/credentials.json
+          rm -f project_ai_academy/token.json
+          rm -f project_ai_academy/youtube_token.json
+          rm -f ~/.claude/.credentials.json

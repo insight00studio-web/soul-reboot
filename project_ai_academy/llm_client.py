@@ -145,8 +145,15 @@ def call_opus(prompt: str, system_prompt: str = "",
     if system_prompt:
         cmd.extend(["--system-prompt", system_prompt])
 
-    # Claude Codeのネスト防止を回避するため、CLAUDECODE環境変数を除去
-    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    # Claude Codeのネスト防止 + ビジネスロジック用機密キーをサブプロセスに渡さない
+    _EXCLUDED_ENV_KEYS = {
+        "CLAUDECODE",
+        "GEMINI_API_KEY",
+        "SOUL_REBOOT_SPREADSHEET_ID",
+        "GMAIL_ADDRESS",
+        "GMAIL_APP_PASSWORD",
+    }
+    env = {k: v for k, v in os.environ.items() if k not in _EXCLUDED_ENV_KEYS}
 
     for attempt in range(max_retries + 1):
         print(f"  [OPUS] Claude Opus 4.6 呼び出し中..." + (f" (リトライ {attempt}/{max_retries})" if attempt > 0 else ""))

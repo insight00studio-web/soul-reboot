@@ -32,6 +32,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate required secrets
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SOUL_REBOOT_SPREADSHEET_ID: ${{ secrets.SOUL_REBOOT_SPREADSHEET_ID }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+          GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          CLAUDE_CREDENTIALS_JSON: ${{ secrets.CLAUDE_CREDENTIALS_JSON }}
+        run: |
+          missing=0
+          [ -z "$GEMINI_API_KEY" ]            && echo "ERROR: GEMINI_API_KEY not set"            && missing=1
+          [ -z "$SOUL_REBOOT_SPREADSHEET_ID" ] && echo "ERROR: SOUL_REBOOT_SPREADSHEET_ID not set" && missing=1
+          [ -z "$GOOGLE_CREDENTIALS_JSON" ]   && echo "ERROR: GOOGLE_CREDENTIALS_JSON not set"   && missing=1
+          [ -z "$GOOGLE_TOKEN_JSON" ]         && echo "ERROR: GOOGLE_TOKEN_JSON not set"         && missing=1
+          [ -z "$CLAUDE_CREDENTIALS_JSON" ]   && echo "ERROR: CLAUDE_CREDENTIALS_JSON not set"   && missing=1
+          [ $missing -eq 1 ] && exit 1 || echo "All required secrets are set"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -87,3 +103,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh workflow run phase_b.yml --repo ${{ github.repository }} -f episode=${{ steps.episode.outputs.episode }}
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          rm -f project_ai_academy/credentials.json
+          rm -f project_ai_academy/token.json
+          rm -f project_ai_academy/youtube_token.json
+          rm -f ~/.claude/.credentials.json

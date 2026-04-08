@@ -68,6 +68,18 @@ class AssetGenerator:
         # --- IMAGE GENERATION: マスター画像のメモリキャッシュ ---
         self._master_image_cache: dict = {}
 
+        # --- IMAGE GENERATION: サブキャラクター（シルエット表示用）---
+        # img_prompt内に含まれる英語キーワード → シルエット説明の対応
+        self.silhouette_chars = {
+            "satomi": "adult woman in her 30s, glasses, neat black hair tied up, holding a small tablet",
+            "homeroom teacher": "adult woman in her 30s, glasses, neat black hair tied up",
+            "sakura": "teenage girl with short brown hair, cheerful",
+            "ken": "teenage boy with short black hair, smiling",
+            "shirakawa": "elderly woman in her 50s, white-streaked short hair, formal suit",
+            "principal": "elderly woman in her 50s, white-streaked short hair, formal suit",
+            "headmistress": "elderly woman in her 50s, white-streaked short hair, formal suit",
+        }
+
         # --- IMAGE GENERATION: 週末服装（月別） ---
         self.weekend_attire = {
             4: "cardigan, light coat, sweater",
@@ -92,6 +104,17 @@ class AssetGenerator:
         for char_key in self.char_image_base:
             if char_key in combined:
                 detected.append(char_key)
+        return detected
+
+    def _detect_silhouette_chars(self, img_prompt: str) -> list[str]:
+        """img_promptからサブキャラクターを検出してシルエット説明リストを返す"""
+        detected = []
+        prompt_lower = img_prompt.lower()
+        seen = set()
+        for keyword, description in self.silhouette_chars.items():
+            if keyword in prompt_lower and description not in seen:
+                detected.append(description)
+                seen.add(description)
         return detected
 
     # 学校内シーンを検出するキーワード（画像プロンプト内で使われる英語・日本語）
@@ -186,14 +209,33 @@ class AssetGenerator:
                 "multiple faces, or any deviation from the reference character design."
             )
         else:
-            # NARRATORシーンなどキャラなし → テキストのみ
-            parts = [
-                f"Draw an anime-style background illustration: {img_prompt}",
-                f"Setting: {attire}",
-            ]
-            if overlay:
-                parts.append(f"Visual effect: {overlay}")
-            parts.append("Style: anime illustration, cinematic, high quality, no characters.")
+            silhouette_descs = self._detect_silhouette_chars(img_prompt)
+            if silhouette_descs:
+                # サブキャラクターがいるシーン → シルエットで表示
+                parts = [
+                    f"Draw an anime-style illustration: {img_prompt}",
+                    f"Setting: {attire}",
+                ]
+                for desc in silhouette_descs:
+                    parts.append(
+                        f"Include a figure ({desc}) rendered as a completely dark silhouette: "
+                        "solid black fill, no facial features visible, no color details, outline only."
+                    )
+                if overlay:
+                    parts.append(f"Visual effect: {overlay}")
+                parts.append(
+                    "Style: anime illustration, cinematic, high quality. "
+                    "Do NOT show NAGISA or SHINJI in this scene."
+                )
+            else:
+                # NARRATORシーンなどキャラなし → テキストのみ
+                parts = [
+                    f"Draw an anime-style background illustration: {img_prompt}",
+                    f"Setting: {attire}",
+                ]
+                if overlay:
+                    parts.append(f"Visual effect: {overlay}")
+                parts.append("Style: anime illustration, cinematic, high quality, no characters.")
 
         return "\n".join(parts)
 
@@ -547,7 +589,9 @@ class AssetGenerator:
             # パスが設定済みでもファイルが存在しない場合（別ランナー等）は再生成する
             existing_audio = line.get("音声ファイルパス")
             if not existing_audio or not os.path.exists(existing_audio):
-                if speaker and speaker in self.voice_map:
+                if speaker not in self.voice_map and speaker:
+                    print(f"  [TTS] WARN: Unknown speaker '{speaker}'. Using default voice (Charon).")
+                if speaker:
                     audio_path = self.generate_voice(speaker, text, tone, ep_num, row_idx, awakening=awakening)
                     if audio_path:
                         # Scriptsシートの更新

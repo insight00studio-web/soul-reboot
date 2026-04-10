@@ -538,7 +538,8 @@ def step_architect(db: SoulRebootDB, config: dict,
 # STEP 4: Writer - 台本生成
 # ===================================================================
 
-def step_writer(db: SoulRebootDB, config: dict, episode_number: int, plot: dict) -> list[dict]:
+def step_writer(db: SoulRebootDB, config: dict, episode_number: int, plot: dict,
+                story_date_info: dict | None = None) -> list[dict]:
     """
     Writerプロンプトにプロットを注入し、Geminiに台本を生成させ、
     Scriptsシートに書き込む（approved=FALSE）。
@@ -548,9 +549,34 @@ def step_writer(db: SoulRebootDB, config: dict, episode_number: int, plot: dict)
     writer_base = load_prompt("writer_prompt.md")
     plot_json = json.dumps(plot, ensure_ascii=False, indent=2)
 
+    # 服装指定を明示的に注入（Writerへ確実に伝達するため）
+    costume_section = ""
+    if story_date_info:
+        sd = story_date_info
+        if sd["costume"] == "私服":
+            nagisa_costume = "casual clothes, white blouse"
+            shinji_costume = "casual clothes, hoodie"
+        else:
+            nagisa_costume = "blue school uniform"
+            shinji_costume = "dark school uniform"
+        costume_section = f"""
+---
+## 【最重要】服装指定（全シーン必ず統一すること）
+
+物語内日付: **{sd['story_date']}（{sd['weekday']}曜日 / {sd['day_type']}）**
+本エピソードの服装: **{sd['costume']}**
+
+全シーンの `image_prompt` で以下の服装を統一して使用すること:
+- ナギサ: `{nagisa_costume}`
+- シンジ: `{shinji_costume}`
+
+**制服と私服を1エピソード内で混在させることは絶対禁止。**
+"""
+
     full_prompt = f"""
 {writer_base}
 
+{costume_section}
 ---
 ## 生成するエピソード情報
 
@@ -955,9 +981,10 @@ def main():
         current_step = "コメントスコアリング"
         top_comments = step_score_comments(db)
         current_step = "プロット生成 (Architect)"
+        story_date_info = _get_story_date_info(episode_number)
         plot = step_architect(db, config, episode_number, news, top_comments)
         current_step = "台本生成 (Writer)"
-        script_lines = step_writer(db, config, episode_number, plot)
+        script_lines = step_writer(db, config, episode_number, plot, story_date_info=story_date_info)
         current_step = "台本監修 (Editor)"
         QUALITY_GATE_THRESHOLD = 300
         MAX_RETRY = 1
@@ -972,7 +999,7 @@ def main():
             issues_text = "\n".join(quality_score.get("issues", []))
             plot = step_architect(db, config, episode_number, news, top_comments,
                                   quality_feedback=issues_text)
-            script_lines = step_writer(db, config, episode_number, plot)
+            script_lines = step_writer(db, config, episode_number, plot, story_date_info=story_date_info)
         current_step = "メタデータ更新"
         step_update_metadata(db, episode_number, plot)
         current_step = "完了処理"

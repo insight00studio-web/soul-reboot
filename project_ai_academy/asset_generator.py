@@ -3,7 +3,7 @@ import argparse
 import time
 import wave
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -80,12 +80,13 @@ class AssetGenerator:
             "headmistress": "elderly woman in her 50s, white-streaked short hair, formal suit",
         }
 
-        # --- IMAGE GENERATION: 週末服装（月別） ---
+        # --- IMAGE GENERATION: 週末服装（月別・複数候補） ---
+        # ep_num で確定選択するため複数候補をリストで保持
         self.weekend_attire = {
-            4: "cardigan, light coat, sweater",
-            5: "blouse, thin shirt, dress",
-            6: "short sleeves, summer dress, t-shirt",
-            7: "short sleeves, summer dress, t-shirt",
+            4: ["white blouse and cardigan", "light sweater and jeans", "casual coat and skirt"],
+            5: ["thin blouse and pants", "casual dress", "shirt and light skirt"],
+            6: ["short-sleeve shirt and shorts", "summer dress", "t-shirt and skirt"],
+            7: ["summer dress", "t-shirt and shorts", "short-sleeve blouse and skirt"],
         }
 
     def _get_nagisa_profile(self, awakening: int) -> str:
@@ -126,37 +127,35 @@ class AssetGenerator:
         "保健室", "音楽室", "体育館", "食堂", "講堂", "理科室", "職員室",
     ]
 
-    def _get_attire_context(self, img_prompt: str = "") -> str:
-        """公開日の曜日・月と画像プロンプトから服装コンテキストを返す。
+    def _get_attire_context(self, ep_num: int) -> str:
+        """エピソード番号と画像プロンプトから服装コンテキストを返す。
 
         ルール:
-          - 学校内シーン → 曜日に関係なく常に制服
           - 平日（月〜金） → 制服
-          - 休日（土・日） → 季節に応じた普段着
+          - 土日・祝日 → 季節に応じた私服（ep_numで1話内統一）
 
-        公開日の算出:
-          - 実行時刻 06:00 JST 以降 → 翌日06:00公開 → 翌日の曜日を使う
-          - 実行時刻 00:00〜05:59 JST → 当日06:00公開 → 当日の曜日を使う
+        ep_numから物語内日付を確定的に算出するため、同一エピソード内の
+        全シーンで必ず同じ服装が選ばれる。
         """
-        # 学校内シーンなら曜日に関係なく制服を強制
-        prompt_lower = img_prompt.lower()
-        for keyword in self.SCHOOL_LOCATION_KEYWORDS:
-            if keyword in prompt_lower:
-                return "school uniform, necktie, blazer"
+        from datetime import date
+        _STORY_START = date(2026, 4, 8)  # 第1話の物語内日付
+        _NATIONAL_HOLIDAYS = {
+            date(2026, 4, 29), date(2026, 5, 3), date(2026, 5, 4),
+            date(2026, 5, 5), date(2026, 5, 6),
+        }
+        story_date = _STORY_START + timedelta(days=ep_num - 1)
+        weekday = story_date.weekday()  # 0=月曜, 6=日曜
+        is_holiday = story_date in _NATIONAL_HOLIDAYS
+        is_school_day = weekday < 5 and not is_holiday
 
-        JST = timezone(timedelta(hours=9))
-        now = datetime.now(JST)
-        publish_date = now.date()
-        if now.hour >= 6:
-            publish_date = publish_date + timedelta(days=1)
-        weekday = publish_date.weekday()  # 0=月曜, 6=日曜
-        month = publish_date.month
-
-        if weekday < 5:  # 平日（月〜金）→ 制服
+        if is_school_day:
             return "school uniform, necktie, blazer"
-        else:  # 土日 → 季節に応じた普段着
-            attire = self.weekend_attire.get(month, "casual outfit")
-            return attire
+
+        # 土日・祝日 → ep_numで候補リストから1種類を確定選択
+        month = story_date.month
+        candidates = self.weekend_attire.get(month, ["casual outfit"])
+        attire = candidates[ep_num % len(candidates)]
+        return attire
 
     def _get_emotional_overlay(self, awakening: int) -> str:
         """覚醒度に応じたビジュアルエフェクトタグを返す"""
@@ -183,10 +182,10 @@ class AssetGenerator:
         print(f"  [IMAGE] Loaded master image for {char_key} ({len(data)} bytes)")
         return data
 
-    def build_image_prompt(self, img_prompt: str, speaker: str, awakening: int) -> str:
+    def build_image_prompt(self, img_prompt: str, speaker: str, awakening: int, ep_num: int = 1) -> str:
         """参照画像ベースの自然言語指示プロンプトを生成する"""
         characters = self._detect_characters(speaker, img_prompt)
-        attire = self._get_attire_context(img_prompt)
+        attire = self._get_attire_context(ep_num)
         overlay = self._get_emotional_overlay(awakening)
 
         if characters:
@@ -340,7 +339,7 @@ class AssetGenerator:
         """
         print(f"  [IMAGE] Generating image for Scene {scene_num}...")
 
-        merged_prompt = self.build_image_prompt(prompt, speaker, awakening)
+        merged_prompt = self.build_image_prompt(prompt, speaker, awakening, ep_num)
         characters = self._detect_characters(speaker, prompt)
 
         # マルチモーダルコンテンツを構築（マスター画像 → テキスト指示の順）

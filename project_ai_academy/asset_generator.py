@@ -43,9 +43,9 @@ class AssetGenerator:
 
         # キャラクターごとの詳細な属性定義（TTSプロンプト用）
         self.char_profiles = {
-            "SHINJI": "16-year-old high school boy, energetic, warm, friendly voice",
-            "NARRATOR": "Mature narrator, calm and professional narration",
-            "SYSTEM": "Mature narrator, calm and professional narration",
+            "SHINJI": "16歳の男子高校生。明るく元気で温かみのある声。友好的で親しみやすいトーン。",
+            "NARRATOR": "落ち着いた大人のナレーター。冷静でプロフェッショナルな語り口。",
+            "SYSTEM": "落ち着いた大人のナレーター。冷静でプロフェッショナルな語り口。",
         }
         
         # 保存先ベースディレクトリ
@@ -92,11 +92,11 @@ class AssetGenerator:
     def _get_nagisa_profile(self, awakening: int) -> str:
         """覚醒度に応じてナギサの声質プロファイルを返す"""
         if awakening <= 30:
-            return "21-year-old calm female college student, soft and composed voice, slightly cool and detached, clear articulation, steady low-energy tone"
+            return "21歳の女子大学生。落ち着いた柔らかい声。やや冷静でクールなトーン。はっきりとした発音で語尾まで丁寧に読み上げる。エネルギーレベルは低め。"
         elif awakening <= 70:
-            return "21-year-old female college student, usually calm but voice wavers slightly under stress, subtle uncertainty creeping into composed tone"
+            return "21歳の女子大学生。普段は落ち着いているが、ストレスで声がわずかに揺れる。冷静さの中に微かな不安が滲み出るトーン。語尾まで丁寧に読み上げる。"
         else:
-            return "21-year-old female college student, emotionally destabilized, voice trembling and breaking, fear and confusion beneath the surface"
+            return "21歳の女子大学生。感情的に不安定な状態。声が震えて途切れがち。表面下に恐怖と混乱が感じられる。それでも語尾まで読み上げる。"
 
     def _detect_characters(self, speaker: str, img_prompt: str) -> list:
         """speaker と img_prompt テキストから登場キャラクターを検出して返す"""
@@ -249,9 +249,10 @@ class AssetGenerator:
         
         # 詳細な指示プロンプトを構築
         full_prompt = (
-            f"[Character: {speaker}, {char_desc}]\n"
-            f"[Tone: {tone}]\n"
-            f"Text: {text}"
+            f"以下のテキストを日本語で自然に読み上げてください。語尾まで丁寧に発音し、日本語本来のイントネーションで読み上げること。\n"
+            f"【キャラクター】{speaker}：{char_desc}\n"
+            f"【トーン】{tone}\n"
+            f"【テキスト】{text}"
         )
 
         for attempt in range(_MAX_RETRIES):

@@ -24,7 +24,7 @@ Write-Host "=== Soul Reboot Token Update ===" -ForegroundColor Cyan
 
 # claude コマンドで API コールを行い、トークンを強制リフレッシュする
 Write-Host "Refreshing Claude token..." -ForegroundColor Yellow
-$claudeOutput = claude -p "ok" --output-format text 2>&1
+claude -p "ok" --output-format text 2>&1 | Out-Null
 if ($LASTEXITCODE -eq 0) {
     Write-Host "OK: Token refreshed." -ForegroundColor Green
 } else {

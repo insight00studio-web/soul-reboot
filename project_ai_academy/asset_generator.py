@@ -1,5 +1,6 @@
 import os
 import argparse
+import re
 import time
 import wave
 from pathlib import Path
@@ -31,7 +32,7 @@ class AssetGenerator:
         self.client = genai.Client(api_key=api_key)
         
         # 設定
-        self.tts_model = "gemini-2.5-flash-preview-tts"
+        self.tts_model = "gemini-3.1-flash-tts-preview"
         self.image_model = "gemini-2.5-flash-image"
         
         self.voice_map = {
@@ -190,13 +191,36 @@ class AssetGenerator:
 
         if characters:
             char_names = " and ".join(characters)
+
+            # --- サブキャラクターのシルエット処理 ---
+            # メインキャラが存在するシーンでも、サブキャラ名がプロンプトに
+            # 含まれている場合はキーワードを除去しシルエット指示を追加する
+            silhouette_descs = self._detect_silhouette_chars(img_prompt)
+            sanitized_prompt = img_prompt
+            if silhouette_descs:
+                for keyword in self.silhouette_chars:
+                    sanitized_prompt = re.sub(
+                        rf'\b{re.escape(keyword)}\b',
+                        '',
+                        sanitized_prompt,
+                        flags=re.IGNORECASE,
+                    )
+                # 連続スペースを整理
+                sanitized_prompt = re.sub(r'  +', ' ', sanitized_prompt).strip()
+
             parts = [
                 f"Draw a new anime illustration scene featuring {char_names}.",
                 "CRITICAL: The character(s) MUST look EXACTLY like in the reference image(s).",
                 "Preserve without change: face shape, facial features, hair color, hair style, eye color, body proportions.",
-                f"Scene: {img_prompt}",
+                f"Scene: {sanitized_prompt}",
                 f"Attire and setting: {attire}",
             ]
+            # サブキャラをシルエットとして追加
+            for desc in silhouette_descs:
+                parts.append(
+                    f"Also include a background figure ({desc}) rendered as a completely dark silhouette: "
+                    "solid black fill, no facial features visible, no color details, outline only."
+                )
             if overlay:
                 parts.append(f"Visual effect: {overlay}")
             parts.append(
@@ -239,7 +263,7 @@ class AssetGenerator:
         return "\n".join(parts)
 
     def generate_voice(self, speaker: str, text: str, tone: str, ep_num: int, row_idx: int, awakening: int = 0) -> str:
-        """Gemini-2.5-Flash-TTS を用いて音声を生成し、WAVヘッダーを付与して保存する"""
+        """Gemini-3.1-Flash-TTS を用いて音声を生成し、WAVヘッダーを付与して保存する"""
         voice_name = self.voice_map.get(speaker.upper(), "Charon")
         if speaker.upper() == "NAGISA":
             char_desc = self._get_nagisa_profile(awakening)

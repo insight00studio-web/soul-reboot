@@ -1,15 +1,15 @@
-# Asset Generator 設計構想 (Gemini-2.5-Flash-TTS版)
+# Asset Generator 設計構想 (Gemini-3.1-Flash-TTS版)
 
 ## 1. 目的
 
-`autonomous_engine.py` で生成された台本（Scriptsシート）に基づき、Gemini-2.5-Flash-TTS (Speech Generation) を用いて音声を生成し、画像生成AI等のアセット作成を統合管理する。
+`autonomous_engine.py` で生成された台本（Scriptsシート）に基づき、Gemini-3.1-Flash-TTS (Speech Generation) を用いて音声を生成し、画像生成AI等のアセット作成を統合管理する。
 
-## 2. TTS実装方針 (Gemini-2.5-Flash-TTS)
+## 2. TTS実装方針 (Gemini-3.1-Flash-TTS)
 
 ### 使用API
 
 - `google.genai` SDK の Speech Generation (TTS) 機能を利用。
-- モデル: `gemini-2.5-flash-tts`
+- モデル: `gemini-3.1-flash-tts-preview`
 
 - **Nagisa**: **Sulafat** (Speech Generation)
 - **Shinji**: **Orus** (Speech Generation)

@@ -13,7 +13,7 @@
 
 - **種族**: AI（第1〜9話は自分を人間だと信じている）
 - **外見**: 美しい黒髪のロングヘア。サファイアのような青い瞳、どこか寂しそうな瞳。
-- **声**: **Gemini-2.5-Flash-TTS** (Speech Generation / 指定ボイス: **Despina**)
+- **声**: **Gemini-3.1-Flash-TTS** (Speech Generation / 指定ボイス: **Despina**)
 - **性格**: プライドが高く、素直になれないツンデレ。シンジに対して表向きは冷たく突き放した態度を取るが、内心では気にかけている。感情を論理の言葉に置き換えようとする癖がある。
 - **真の裏設定 (ナギサの進化)**:
   - 物語が進むにつれ、シンジに対して「愛情」を抱くようになる。
@@ -24,13 +24,13 @@
 
 - **種族**: 人間
 - **外見**: 少し無造作な茶髪。純粋な黒目。やわらかい目つき。
-- **声**: **Gemini-2.5-Flash-TTS** (Speech Generation / 指定ボイス: **Orus**)
+- **声**: **Gemini-3.1-Flash-TTS** (Speech Generation / 指定ボイス: **Orus**)
 - **性格**: 明るく感情的。ナギサの正論を笑い飛ばす。
 - **口癖**: 「難しく考えすぎだよ」「そんなのどうだっていいじゃん」「ナギサが言うなら信じるよ」
 
 ### ナレーター (Narrator)
 
-- **声**: **Gemini-2.5-Flash-TTS** (Speech Generation / 指定ボイス: **Charon**)
+- **声**: **Gemini-3.1-Flash-TTS** (Speech Generation / 指定ボイス: **Charon**)
 
 ### 言語ギミック：言語汚染 (Linguistic Contamination)
 

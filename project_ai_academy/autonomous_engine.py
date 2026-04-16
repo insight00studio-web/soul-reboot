@@ -358,13 +358,39 @@ def _build_architect_prompt(db: SoulRebootDB, config: dict,
         f"覚醒度:{params.get('覚醒度',0)} / 記録度:{params.get('記録度',5)}"
     )
 
-    # パラメータ目標レンジ
+    # パラメータ目標レンジ + 乖離警告
     targets = db.get_parameter_targets(episode_number)
     target_context = (
         f"パラメータ目標レンジ（ロードマップ準拠）: "
         f"信頼度:{targets['trust'][0]}〜{targets['trust'][1]} / "
         f"覚醒度:{targets['awakening'][0]}〜{targets['awakening'][1]}"
     )
+
+    # 目標レンジとの差分を計算し、乖離が大きい場合に警告を注入
+    gap_warnings = []
+    for label, key, target_key in [
+        ("信頼度", "信頼度", "trust"),
+        ("覚醒度", "覚醒度", "awakening"),
+        ("記録度", "記録度", "record"),
+    ]:
+        current = safe_int(params.get(key, 0))
+        t_range = targets.get(target_key)
+        if not t_range:
+            continue
+        t_low, t_high = t_range
+        if current < t_low:
+            gap = t_low - current
+            gap_warnings.append(
+                f"⚠ {label}: 現在値 {current} → 目標下限 {t_low}（{gap}pt 不足）。"
+                f"今話の parameter_delta で +{min(gap, 10)} 以上を推奨。"
+            )
+        elif current > t_high:
+            gap = current - t_high
+            gap_warnings.append(
+                f"⚠ {label}: 現在値 {current} → 目標上限 {t_high}（{gap}pt 超過）。"
+                f"今話は delta=0 とし、自然に収束させること。"
+            )
+    gap_context = "\n".join(gap_warnings) if gap_warnings else "パラメータは目標レンジ内です。"
 
     today = date.today().isoformat()
     pub_date_str = publish_date.isoformat() if publish_date else today
@@ -406,6 +432,7 @@ def _build_architect_prompt(db: SoulRebootDB, config: dict,
 
 {param_context}
 {target_context}
+{gap_context}
 
 {l1_context}
 

@@ -60,6 +60,12 @@ Writerは以下のリストから `tone` を選択すること。リスト外の
       - 制服の場合: ナギサ → `blue school uniform`、シンジ → `dark school uniform`
       - 私服の場合: ナギサ → `casual clothes, white blouse`、シンジ → `casual clothes, hoodie`
       - **1エピソード内で制服と私服を混在させることは絶対禁止**（土日・祝日は終日私服）
+    - **サブキャラクターの画像ルール（絶対厳守）**:
+      - **マスター参照画像が存在するのは NAGISA と SHINJI のみ**。それ以外のキャラクター（里見先生 / ケン / サクラ / 白川律子）は画像プロンプト内で**顔や外見を具体的に描写してはならない**。
+      - サブキャラクターが画面に映る場合は、`silhouette`, `dark shadow figure`, `backlit figure` 等のキーワードを使い、**シルエット（影）としてのみ**表現すること。
+      - NG例: `Satomi smiling in the classroom, glasses, neat hair`（← 顔が生成されてしまう）
+      - OK例: `NAGISA in classroom, a silhouette of a female teacher in the background`
+      - サブキャラ単独シーン: `silhouette of a teenage boy (Ken) standing at the school gate, backlit, no facial features`
 4. **キャラクターの笑いの構造**: Architectが指定した `comedy_pattern` に従って掛け合いを書くこと。**毎話同じパターンにしない**。
     - **A: 字義解釈型** — ナギサが比喩を文字通りに受け取り、シンジが感情論でツッコむ
     - **B: 毒舌デレ型** — ナギサの毒舌→小さなデレ→シンジが食いつき→ナギサ即否定

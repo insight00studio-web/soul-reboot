@@ -282,8 +282,14 @@ class VideoCompiler:
 
         # 音声と再生時間
         if audio_path and os.path.exists(audio_path):
-            duration = self._get_audio_duration(audio_path) + 0.3
-            audio_clip = AudioFileClip(audio_path)
+            raw_dur = self._get_audio_duration(audio_path)
+            if raw_dur > 0:
+                duration = raw_dur + 0.3
+                audio_clip = AudioFileClip(audio_path)
+            else:
+                # 破損ファイル: AudioFileClipは呼ばずテキスト長でフォールバック
+                duration = max(len(text) / 4, 2.0)
+                audio_clip = None
         else:
             duration = max(len(text) / 4, 2.0)
             audio_clip = None

@@ -325,23 +325,24 @@ class AssetGenerator:
                 # 保存
                 ep_dir = self.assets_dir / "audio" / f"ep{ep_num:03d}"
                 ep_dir.mkdir(parents=True, exist_ok=True)
-                
+
                 filename = f"ep{ep_num:03d}_{row_idx:04d}_{speaker}.wav"
                 file_path = ep_dir / filename
-                
-                # MIMEタイプに応じて保存方法を変える
-                # audio/L16 (PCM) の場合はWAVヘッダーが必要
-                if "audio/L16" in mime_type or "codec=pcm" in mime_type:
-                    # 24kHz, 16-bit, Mono と仮定（Gemini TTSの標準設定）
-                    with wave.open(str(file_path), "wb") as wav_file:
-                        wav_file.setnchannels(1)
-                        wav_file.setsampwidth(2) # 16-bit = 2 bytes
-                        wav_file.setframerate(24000)
-                        wav_file.writeframes(audio_data)
-                else:
-                    # それ以外（mp3など）はバイナリとしてそのまま保存
+
+                # RIFFヘッダーの有無でWAV済みか生PCMかを判定
+                # MIMEタイプはAPIバージョンによって変わるため信頼しない
+                print(f"    MIME: {mime_type}, size: {len(audio_data)} bytes")
+                if audio_data[:4] == b'RIFF':
+                    # すでにWAVヘッダー付き → そのまま保存
                     with open(file_path, "wb") as f:
                         f.write(audio_data)
+                else:
+                    # 生PCMデータ → 24kHz/16-bit/Mono でWAVヘッダーを付与
+                    with wave.open(str(file_path), "wb") as wav_file:
+                        wav_file.setnchannels(1)
+                        wav_file.setsampwidth(2)
+                        wav_file.setframerate(24000)
+                        wav_file.writeframes(audio_data)
                 
                 print(f"    Saved: {file_path}")
                 time.sleep(_RATE_LIMIT_WAIT)

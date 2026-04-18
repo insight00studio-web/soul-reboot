@@ -16,6 +16,31 @@ from utils import find_japanese_font
 load_dotenv()
 
 # レート制限・リトライ設定
+TONE_TAG_MAP: dict[str, str] = {
+    "明るい": "excited",
+    "喜び": "happy",
+    "悲しい": "sad",
+    "怒り": "angry",
+    "驚き": "amazed",
+    "恐れ": "panicked",
+    "嫌悪": "scornful",
+    "震え": "trembling",
+    "毒舌": "sarcastic",
+    "ツッコミ": "playful",
+    "微照れ（即否定）": "playful",
+    "冷静分析": "serious",
+    "静か": "measured",
+    "観察": "thoughtful",
+    "不穏": "menacing",
+    "共感": "empathetic",
+    "好奇": "curious",
+    "憂鬱": "tired",
+    "決意": "determined",
+    "笑い": "laughs",
+    "ため息": "sighs",
+    "ささやき": "whispers",
+}
+
 _RATE_LIMIT_WAIT = 21       # 生成成功後のレート制限回避待機（秒）
 _TTS_RETRY_WAIT_429 = 60    # TTS 429エラー時のリトライ待機（秒）
 _IMAGE_RETRY_WAIT_429 = 65  # 画像生成 429エラー時のリトライ待機（秒）
@@ -271,12 +296,16 @@ class AssetGenerator:
             char_desc = self.char_profiles.get(speaker.upper(), "Narrator")
         print(f"  [TTS] Generating voice for {speaker} (Voice: {voice_name}, Tone: {tone})...")
         
+        # 感情タグをテキスト先頭に付加（マッピングがあれば）
+        emotion_tag = TONE_TAG_MAP.get(tone, "")
+        tagged_text = f"[{emotion_tag}] {text}" if emotion_tag else text
+
         # 詳細な指示プロンプトを構築
         full_prompt = (
             f"以下のテキストを日本語で自然に読み上げてください。語尾まで丁寧に発音し、日本語本来のイントネーションで読み上げること。\n"
             f"【キャラクター】{speaker}：{char_desc}\n"
             f"【トーン】{tone}\n"
-            f"【テキスト】{text}"
+            f"【テキスト】{tagged_text}"
         )
 
         for attempt in range(_MAX_RETRIES):

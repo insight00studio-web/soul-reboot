@@ -17,9 +17,9 @@ load_dotenv()
 
 # レート制限・リトライ設定
 _RATE_LIMIT_WAIT = 21       # 生成成功後のレート制限回避待機（秒）
-_TTS_RETRY_WAIT_429 = 35    # TTS 429エラー時のリトライ待機（秒）
+_TTS_RETRY_WAIT_429 = 60    # TTS 429エラー時のリトライ待機（秒）
 _IMAGE_RETRY_WAIT_429 = 65  # 画像生成 429エラー時のリトライ待機（秒）
-_MAX_RETRIES = 3            # 生成リトライ上限
+_MAX_RETRIES = 5            # 生成リトライ上限
 
 class AssetGenerator:
     def __init__(self, spreadsheet_id: str):

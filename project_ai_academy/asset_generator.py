@@ -41,6 +41,51 @@ TONE_TAG_MAP: dict[str, str] = {
     "ささやき": "whispers",
 }
 
+# 場所キーワード辞書（画像プロンプトから場所を正規化するため）
+LOCATION_KEYWORD_MAP = [
+    ("classroom",     ["classroom", "教室"]),
+    ("corridor",      ["hallway", "corridor", "廊下"]),
+    ("cafe",          ["cafe", "café", "starbucks", "coffee shop", "スタバ", "カフェ"]),
+    ("library",       ["library", "図書館", "図書室"]),
+    ("park",          ["park", "公園"]),
+    ("station",       ["station", "駅"]),
+    ("rooftop",       ["rooftop", "屋上"]),
+    ("gym",           ["gymnasium", "体育館"]),
+    ("home",          ["living room", "bedroom", "自宅", "リビング", "自室"]),
+    ("store",         ["shopping", "コンビニ", "ショッピング", "モール"]),
+    ("restaurant",    ["restaurant", "dining", "cafeteria", "食堂", "レストラン"]),
+    ("nurse_office",  ["infirmary", "保健室"]),
+    ("entrance",      ["shoe locker", "下駄箱", "昇降口", "校門"]),
+]
+
+# 私服マスター生成プロンプト定義 {char_key: {outfit_key: (outfit_desc, context)}}
+_OUTFIT_DEFINITIONS: dict[str, dict[str, tuple[str, str]]] = {
+    "NAGISA": {
+        "spring":  ("mint green oversized hoodie, white inner blouse, light blue slim jeans, white sneakers",
+                    "spring casual, soft pastel tones"),
+        "summer":  ("white sleeveless blouse, light blue denim shorts, casual sandals",
+                    "summer casual, light and breezy"),
+        "winter":  ("cream turtleneck sweater, dark plaid midi skirt, caramel brown cardigan, ankle boots",
+                    "fall/winter casual, warm layered look"),
+        "indoor":  ("soft lavender oversized hoodie, light gray sweatpants, white socks",
+                    "cozy indoor home outfit, relaxed loungewear"),
+        "outing":  ("pastel yellow floral blouse, white wide-leg trousers, small shoulder bag, white flats",
+                    "smart casual going-out outfit, slightly dressed up"),
+    },
+    "SHINJI": {
+        "spring":  ("navy blue zip-up hoodie, white t-shirt underneath, light khaki chinos, white sneakers",
+                    "spring casual, comfortable and relaxed"),
+        "summer":  ("plain white t-shirt, light denim shorts, casual sneakers",
+                    "summer casual, simple and cool"),
+        "winter":  ("heather gray chunky knit sweater, dark navy jeans, dark sneakers",
+                    "fall/winter casual, warm and cozy"),
+        "indoor":  ("soft olive green sweatshirt, light gray joggers, white socks",
+                    "cozy home outfit, comfortable loungewear"),
+        "outing":  ("light blue Oxford button-up shirt, navy chinos, leather sneakers",
+                    "smart casual going-out outfit"),
+    },
+}
+
 _RATE_LIMIT_WAIT = 21       # 生成成功後のレート制限回避待機（秒）
 _TTS_RETRY_WAIT_429 = 60    # TTS 429エラー時のリトライ待機（秒）
 _IMAGE_RETRY_WAIT_429 = 65  # 画像生成 429エラー時のリトライ待機（秒）
@@ -93,6 +138,18 @@ class AssetGenerator:
 
         # --- IMAGE GENERATION: マスター画像のメモリキャッシュ ---
         self._master_image_cache: dict = {}
+
+        # --- IMAGE GENERATION: 私服マスター参照画像パス ---
+        self.outfit_master_paths: dict[str, dict[str, Path]] = {
+            char_key: {
+                outfit_key: self.base_dir / "assets" / "masters" / f"{char_key.lower()}_casual_{outfit_key}.png"
+                for outfit_key in _OUTFIT_DEFINITIONS[char_key]
+            }
+            for char_key in _OUTFIT_DEFINITIONS
+        }
+
+        # --- IMAGE GENERATION: 私服マスター画像のメモリキャッシュ ---
+        self._outfit_master_cache: dict = {}
 
         # --- IMAGE GENERATION: サブキャラクター（シルエット表示用）---
         # img_prompt内に含まれる英語キーワード → シルエット説明の対応
@@ -207,6 +264,122 @@ class AssetGenerator:
         self._master_image_cache[char_key] = data
         print(f"  [IMAGE] Loaded master image for {char_key} ({len(data)} bytes)")
         return data
+
+    def _get_outfit_key(self, ep_num: int, img_prompt: str) -> str | None:
+        """エピソードと画像プロンプトから適用する私服マスターキーを返す。制服の場合は None。"""
+        attire = self._get_attire_context(ep_num)
+        if "school uniform" in attire:
+            return None
+        # 室内/自宅
+        if any(kw in img_prompt for kw in ["自宅", "リビング", "自室"]) or \
+           any(kw in img_prompt.lower() for kw in ["home", "living room", "bedroom", "indoor"]):
+            return "indoor"
+        # お出かけ
+        if any(kw in img_prompt for kw in ["デート", "お出かけ", "ショッピング"]) or \
+           any(kw in img_prompt.lower() for kw in ["date", "shopping", "mall", "movie theater"]):
+            return "outing"
+        # 季節判定
+        from datetime import date
+        story_date = date(2026, 4, 8) + timedelta(days=ep_num - 1)
+        month = story_date.month
+        if month in (6, 7, 8):
+            return "summer"
+        if month in (11, 12, 1, 2, 3):
+            return "winter"
+        return "spring"
+
+    def _extract_location_key(self, img_prompt: str) -> str:
+        """画像プロンプトから場所を正規化して返す。不明な場合は空文字。"""
+        prompt_lower = img_prompt.lower()
+        for location_key, keywords in LOCATION_KEYWORD_MAP:
+            for kw in keywords:
+                if kw in img_prompt or kw in prompt_lower:
+                    return location_key
+        return ""
+
+    def _load_outfit_master_bytes(self, char_key: str, outfit_key: str):
+        """私服マスター画像をキャッシュ付きで読み込む。存在しない場合は None。"""
+        cache_key = f"{char_key}_{outfit_key}"
+        if cache_key in self._outfit_master_cache:
+            return self._outfit_master_cache[cache_key]
+        img_path = self.outfit_master_paths.get(char_key, {}).get(outfit_key)
+        if img_path is None or not img_path.exists():
+            return None
+        with open(img_path, "rb") as f:
+            data = f.read()
+        self._outfit_master_cache[cache_key] = data
+        print(f"  [IMAGE] Loaded outfit master: {char_key}/{outfit_key} ({len(data)} bytes)")
+        return data
+
+    def _generate_outfit_master(self, char_key: str, outfit_key: str) -> bool:
+        """指定キャラ・服装パターンのマスター参照画像を生成・保存する"""
+        outfit_desc, context = _OUTFIT_DEFINITIONS[char_key][outfit_key]
+        char_base = self.char_image_base.get(char_key, "")
+        prompt = (
+            f"Draw a full-body anime character reference illustration. "
+            f"Character traits: {char_base}. "
+            f"The character MUST look EXACTLY like in the reference image (same face, hair, eyes).\n"
+            f"Outfit: {outfit_desc}\n"
+            f"Context: {context}\n"
+            "Style: clean anime illustration, full body visible, neutral standing pose, "
+            "simple white background. This is a character costume reference sheet. "
+            "High quality, consistent character design, no background scenery."
+        )
+        master_bytes = self._load_master_image_bytes(char_key)
+        contents = []
+        if master_bytes:
+            contents.append(types.Part.from_bytes(data=master_bytes, mime_type="image/png"))
+        contents.append(prompt)
+
+        for attempt in range(_MAX_RETRIES):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.image_model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["TEXT", "IMAGE"],
+                        image_config=types.ImageConfig(aspect_ratio="1:1"),
+                    ),
+                )
+                image_data = None
+                for part in response.candidates[0].content.parts:
+                    if part.inline_data:
+                        image_data = part.inline_data.data
+                        break
+                if not image_data:
+                    print(f"    ERROR: No image data for outfit master {char_key}/{outfit_key}")
+                    return False
+                masters_dir = self.base_dir / "assets" / "masters"
+                masters_dir.mkdir(parents=True, exist_ok=True)
+                file_path = masters_dir / f"{char_key.lower()}_casual_{outfit_key}.png"
+                with open(file_path, "wb") as f:
+                    f.write(image_data)
+                print(f"    [OUTFIT MASTER] Saved: {file_path}")
+                time.sleep(_RATE_LIMIT_WAIT)
+                return True
+            except Exception as e:
+                if "429" in str(e):
+                    print(f"    Rate limited. Waiting {_IMAGE_RETRY_WAIT_429}s (Attempt {attempt+1}/{_MAX_RETRIES})...")
+                    time.sleep(_IMAGE_RETRY_WAIT_429)
+                    continue
+                print(f"    ERROR: Outfit master generation failed: {e}")
+                return False
+        return False
+
+    def _ensure_outfit_masters(self):
+        """私服マスター画像が不足している場合に自動生成する"""
+        missing = [
+            (char_key, outfit_key)
+            for char_key in _OUTFIT_DEFINITIONS
+            for outfit_key in _OUTFIT_DEFINITIONS[char_key]
+            if not self.outfit_master_paths[char_key][outfit_key].exists()
+        ]
+        if not missing:
+            return
+        print(f"[OUTFIT MASTERS] {len(missing)}個の私服マスター画像を生成します...")
+        for char_key, outfit_key in missing:
+            print(f"  Generating: {char_key} / {outfit_key}...")
+            self._generate_outfit_master(char_key, outfit_key)
 
     def build_image_prompt(self, img_prompt: str, speaker: str, awakening: int, ep_num: int = 1) -> str:
         """参照画像ベースの自然言語指示プロンプトを生成する"""
@@ -386,23 +559,46 @@ class AssetGenerator:
                 return ""
         return ""
 
-    def generate_image(self, prompt: str, ep_num: int, scene_num: int, speaker: str = "", awakening: int = 0) -> str:
-        """gemini-2.0-flash-exp を用いてキャラクター一貫性を保った画像を生成し保存する。
+    def generate_image(self, prompt: str, ep_num: int, scene_num: int,
+                       speaker: str = "", awakening: int = 0,
+                       bg_reference: str | None = None) -> str:
+        """キャラクター一貫性を保った画像を生成し保存する。
 
-        マスター参照画像（PNG）+ 自然言語指示プロンプトのマルチモーダルリクエストを送信する。
-        キャラクターなし（NARRATORのみ）のシーンはテキストプロンプトのみで生成する。
+        マスター参照画像（PNG）+ 私服マスター（該当時）+ 背景リファレンス（同一場所2シーン目以降）
+        + 自然言語指示プロンプトのマルチモーダルリクエストを送信する。
         """
         print(f"  [IMAGE] Generating image for Scene {scene_num}...")
 
         merged_prompt = self.build_image_prompt(prompt, speaker, awakening, ep_num)
         characters = self._detect_characters(speaker, prompt)
 
-        # マルチモーダルコンテンツを構築（マスター画像 → テキスト指示の順）
+        # マルチモーダルコンテンツを構築
+        # 順序: キャラマスター → 私服マスター（私服時） → 背景リファレンス → テキスト
         contents = []
+
+        # キャラクターマスター画像
         for char_key in characters:
             img_bytes = self._load_master_image_bytes(char_key)
             if img_bytes is not None:
                 contents.append(types.Part.from_bytes(data=img_bytes, mime_type="image/png"))
+
+        # 私服マスター画像（制服でない場合のみ）
+        outfit_key = self._get_outfit_key(ep_num, prompt)
+        if outfit_key and characters:
+            for char_key in characters:
+                outfit_bytes = self._load_outfit_master_bytes(char_key, outfit_key)
+                if outfit_bytes is not None:
+                    contents.append(types.Part.from_bytes(data=outfit_bytes, mime_type="image/png"))
+
+        # 同一場所の背景リファレンス画像（2シーン目以降）
+        if bg_reference and os.path.exists(bg_reference):
+            with open(bg_reference, "rb") as f:
+                bg_bytes = f.read()
+            contents.append(types.Part.from_bytes(data=bg_bytes, mime_type="image/png"))
+            merged_prompt += (
+                "\nIMPORTANT: Keep the background and environment CONSISTENT with the "
+                "reference scene image provided. Same location, same lighting, same props and decorations."
+            )
 
         contents.append(merged_prompt)
 
@@ -600,8 +796,14 @@ class AssetGenerator:
         params = self.db.get_latest_parameters()
         awakening = int(params.get("覚醒度", 0))
 
+        # 私服マスターの確認・自動生成
+        self._ensure_outfit_masters()
+
         # シーンごとの画像プロンプトを追跡（同じシーンで重複生成しないため）
         processed_scenes = set()
+
+        # 場所別 背景リファレンス画像キャッシュ（同一場所のシーン間で背景一貫性を保つため）
+        location_bg_refs: dict[str, str] = {}
 
         # シーンごとの全話者を事前収集（NARRATORシーンでもキャラ登場を検出するため）
         scene_all_speakers: dict[int, list[str]] = {}
@@ -628,8 +830,16 @@ class AssetGenerator:
             if img_prompt and scene_num not in processed_scenes:
                 # シーン内の全話者を結合して渡す（NARRATOR話者でもキャラが映るシーンを正しく検出）
                 all_speakers_in_scene = " ".join(scene_all_speakers.get(scene_num, [speaker]))
-                img_path = self.generate_image(img_prompt, ep_num, scene_num, speaker=all_speakers_in_scene, awakening=awakening)
+                location_key = self._extract_location_key(img_prompt)
+                bg_reference = location_bg_refs.get(location_key) if location_key else None
+                img_path = self.generate_image(
+                    img_prompt, ep_num, scene_num,
+                    speaker=all_speakers_in_scene, awakening=awakening,
+                    bg_reference=bg_reference
+                )
                 if img_path:
+                    if location_key and location_key not in location_bg_refs:
+                        location_bg_refs[location_key] = img_path
                     self.db.register_asset(
                         episode_number=ep_num,
                         scene_number=scene_num,

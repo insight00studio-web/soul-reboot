@@ -25,3 +25,6 @@ output.txt
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code hook 一時ファイル
+.claude/tmp/

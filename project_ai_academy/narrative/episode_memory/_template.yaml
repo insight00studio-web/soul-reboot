@@ -1,0 +1,48 @@
+# 話ごとの構造化記憶テンプレート
+# autonomous/memory.py::write_episode_memory() が自動生成する
+# 手動編集可。編集内容は次話生成時に反映される。
+
+episode: 0                                # 話数
+date: "2026-04-08"                        # 物語内日付（YYYY-MM-DD）
+arc_phase: "PHASE_1_happy_misrecognition" # PHASE_1/2/3/4 のいずれか
+title: ""                                 # 確定タイトル
+one_line_summary: ""                      # 1文要約（Architectへの注入用）
+
+# この話で起きた主要な出来事（時系列）
+key_events:
+  - ""
+
+# 話末時点のキャラクター状態
+character_state:
+  NAGISA:
+    emotion: ""                # 話末の感情状態（例: 不安、動揺、安堵）
+    awareness_of_ai: ""        # AI自覚の段階（Phase 1:無自覚 / Phase 2:違和感 / Phase 3:受容）
+    relation_to_SHINJI: ""     # シンジへの距離感（例: 警戒、依存、信頼、恋心の芽生え）
+  SHINJI:
+    emotion: ""
+    hidden_motive: ""          # 隠している動機・本音
+    relation_to_NAGISA: ""
+
+# 伏線の増減
+foreshadowing:
+  opened: []                   # ["FS-012", ...]
+  resolved: []
+
+# 話末のパラメータ値
+parameters:
+  trust: 0
+  awakening: 0
+  record: 0
+
+# 次話への引き
+cliffhanger: ""
+
+# 次話生成時に踏まえるべき感情的・状況的な繋ぎ
+# (Architect の <previous_episode_state> に直接注入される)
+next_ep_hook: ""
+
+# 使用したコメディパターン・構造・舞台（重複回避用）
+used:
+  comedy_pattern: ""           # 例: "A+C"
+  structure_type: ""           # 例: "日常→異変→発見"
+  scene_locations: []          # 例: ["教室", "屋上"]

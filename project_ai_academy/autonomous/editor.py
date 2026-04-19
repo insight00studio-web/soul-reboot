@@ -6,6 +6,7 @@ from sheets_db import SoulRebootDB
 from llm_client import call_opus, parse_json_robust
 from utils import safe_int
 
+from .memory import build_narrative_context
 from .utils import load_prompt
 
 
@@ -22,6 +23,20 @@ def step_editor(db: SoulRebootDB, episode_number: int,
     plot_json = json.dumps(plot, ensure_ascii=False, indent=2)
     script_json = json.dumps(script_lines, ensure_ascii=False, indent=2)
 
+    # narrative/ 正典コンテキスト（character_bible・arc_plan・前話状態）を Editor にも渡す
+    narrative_section = ""
+    try:
+        narrative_ctx = build_narrative_context(episode_number)
+        if narrative_ctx:
+            narrative_section = f"""
+---
+## 物語正典コンテキスト（narrative/ 層 — 台本がここから逸脱していないか検査すること）
+
+{narrative_ctx}
+"""
+    except Exception as e:
+        print(f"  [EDITOR] WARN: narrative コンテキスト構築に失敗: {e}（スキップして続行）")
+
     full_prompt = f"""
 {editor_base}
 
@@ -34,11 +49,21 @@ def step_editor(db: SoulRebootDB, episode_number: int,
 ## 現在の台本（Writerが生成）
 
 {script_json}
+{narrative_section}
+---
+## 整合性チェック（Phase 3 新設）
+
+上の「物語正典コンテキスト」と台本を照合し、以下を検出して `consistency.issues` に列挙すること:
+
+1. **キャラ口調逸脱**: character_bible の NG 口調がナギサ/シンジのセリフに混入していないか。特にナギサの「お役に立てて嬉しいです」「AIとして〜」「処理します」は絶対禁止。
+2. **成長段階の逸脱**: 現在の arc_phase の「禁止される変化」に該当する描写が無いか（例: Phase 1 でナギサが自分を AI と疑う／Phase 3 でシンジが軽口で流す）。
+3. **伏線の矛盾**: foreshadowing_resolved で回収したはずの伏線を再度開く描写が無いか。
+4. **arc_plan 準拠**: 強制イベント Day（Day 10, 15, 23, 29）の該当Dayで、指定イベントが発生しているか（該当Day以外なら検査不要）。
 
 ---
 ## 出力フォーマット
 
-以下のJSON形式で出力してください。品質スコアと修正後の台本の両方を含めること。
+以下のJSON形式で出力してください。品質スコアと整合性チェック、修正後の台本の両方を含めること。
 変更がなくても全行を出力してください。
 
 ```json
@@ -50,6 +75,13 @@ def step_editor(db: SoulRebootDB, episode_number: int,
     "shinji_agency": 0,
     "parameter_alignment": 0,
     "total": 0,
+    "issues": []
+  }},
+  "consistency": {{
+    "character_voice_ok": true,
+    "growth_stage_ok": true,
+    "foreshadowing_ok": true,
+    "arc_event_ok": true,
     "issues": []
   }},
   "edited_script": [
@@ -113,6 +145,25 @@ def step_editor(db: SoulRebootDB, episode_number: int,
     if issues:
         for issue in issues:
             print(f"    - {issue}")
+
+    # 整合性チェック結果（Phase 3 新設）
+    if isinstance(edited, dict):
+        consistency = edited.get("consistency") or {}
+        cons_issues = consistency.get("issues") or []
+        if cons_issues:
+            print(f"  → 整合性: NG {len(cons_issues)}件")
+            for issue in cons_issues:
+                print(f"    ! {issue}")
+        else:
+            checks = [
+                ("口調", consistency.get("character_voice_ok")),
+                ("成長段階", consistency.get("growth_stage_ok")),
+                ("伏線", consistency.get("foreshadowing_ok")),
+                ("arc_event", consistency.get("arc_event_ok")),
+            ]
+            ok_flags = [n for n, v in checks if v is True]
+            if ok_flags:
+                print(f"  → 整合性 OK: {', '.join(ok_flags)}")
 
     # スプレッドシートを上書き
     db.replace_script_lines(episode_number, edited_lines)

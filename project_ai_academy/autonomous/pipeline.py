@@ -18,6 +18,7 @@ from notifier import notify_success, notify_error
 from .architect import step_architect
 from .collect import step_collect_analytics, step_collect_news, step_score_comments
 from .editor import step_editor
+from .memory import write_episode_memory
 from .metadata import step_finalize, step_update_metadata
 from .utils import _get_story_date_info
 from .writer import step_writer
@@ -102,6 +103,23 @@ def main():
             script_lines = step_writer(db, config, episode_number, plot, story_date_info=story_date_info)
         current_step = "メタデータ更新"
         step_update_metadata(db, episode_number, plot)
+        # Phase 3: 話末状態を narrative/episode_memory/ep_{NN}.yaml に永続化
+        # 次話生成時に Architect / Editor が `<previous_episode_state>` として参照する
+        try:
+            latest_params = db.get_latest_parameters() or {}
+            params_for_memory = {
+                "trust": int(latest_params.get("信頼度", 0) or 0),
+                "awakening": int(latest_params.get("覚醒度", 0) or 0),
+                "record": int(latest_params.get("記録度", 0) or 0),
+            }
+            mem_path = write_episode_memory(
+                episode_number, plot, params_for_memory,
+                story_date_info=story_date_info,
+            )
+            if mem_path:
+                print(f"  → episode_memory 書き出し: {mem_path}")
+        except Exception as e:
+            print(f"  WARN: episode_memory 書き出し失敗: {e}（続行）")
         current_step = "完了処理"
         step_finalize(db, episode_number, plot, advance_episode=not args.force, analytics_summary=analytics_summary)
         # 台本の総文字数（セリフ・地の文のみ集計）

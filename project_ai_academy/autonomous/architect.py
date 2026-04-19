@@ -12,6 +12,7 @@ from event_calendar import get_event_on_date
 from llm_client import call_opus, parse_json_robust
 from utils import safe_int
 
+from .memory import build_narrative_context
 from .utils import (
     STORY_START,
     _get_story_date_info,
@@ -114,6 +115,25 @@ def _build_architect_prompt(db: SoulRebootDB, config: dict,
 {quality_feedback}
 """ if quality_feedback else ""
 
+    # narrative/ 層からの構造化コンテキスト注入（Phase 3）
+    # arc_plan.md / character_bible.md / ep_{N-1} を Architect 末尾に追加する
+    narrative_section = ""
+    try:
+        narrative_ctx = build_narrative_context(episode_number)
+        if narrative_ctx:
+            narrative_section = f"""
+---
+## 物語正典コンテキスト（narrative/ 層 — 必ず遵守すること）
+
+以下は `narrative/arc_plan.md` / `narrative/character_bible.md` / 前話の構造化記憶から
+自動抽出されたコンテキストです。キャラの口調・成長段階・arc のフェーズ目標は
+このセクションを**最優先**で参照し、逸脱しないプロットを設計すること。
+
+{narrative_ctx}
+"""
+    except Exception as e:
+        print(f"  [ARCHITECT] WARN: narrative コンテキスト構築に失敗: {e}（スキップして続行）")
+
     sd = story_date_info or {}
     story_date_line = (
         f"- **物語内日付**: {sd.get('story_date', '不明')}（{sd.get('weekday', '?')}曜日 / {sd.get('day_type', '?')}）\n"
@@ -157,6 +177,7 @@ def _build_architect_prompt(db: SoulRebootDB, config: dict,
 {analytics_context}
 {event_section}
 {feedback_section}
+{narrative_section}
 ---
 ## 出力フォーマット（JSON形式で出力してください）
 

@@ -2,7 +2,7 @@ name: "Soul Reboot - Phase A (台本生成)"
 
 on:
   schedule:
-    - cron: "0 8 * * *" # UTC 08:00 = JST 17:00
+    - cron: "0 12 * * *" # UTC 12:00 = JST 21:00
   workflow_dispatch:
     inputs:
       episode:

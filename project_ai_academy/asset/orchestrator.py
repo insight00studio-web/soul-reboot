@@ -196,7 +196,7 @@ class AssetGenerator(AttireMixin, MasterMixin, TTSMixin, ImageMixin):
                 if speaker not in self.voice_map and speaker:
                     print(f"  [TTS] WARN: Unknown speaker '{speaker}'. Using default voice (Charon).")
                 if speaker:
-                    audio_path = self.generate_voice(speaker, text, tone, ep_num, row_idx, awakening=awakening)
+                    audio_path = self.generate_voice(speaker, text, tone, ep_num, row_idx)
                     if audio_path:
                         # Scriptsシートの更新
                         self.db.update_script_audio_path(row_idx, audio_path)

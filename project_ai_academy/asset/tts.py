@@ -1,9 +1,8 @@
 """asset/tts.py - Gemini TTS による音声生成。
 
 TTSMixin は AssetGenerator に合成される。単独では使わない。
-前提: self.client, self.tts_model, self.voice_map, self.char_profiles,
-     self.assets_dir, self._retry_on_429, self._get_nagisa_profile
-     が利用可能であること。
+前提: self.client, self.tts_model, self.voice_map, self.assets_dir,
+     self._retry_on_429 が利用可能であること。
 """
 
 import time
@@ -22,26 +21,18 @@ from .constants import (
 class TTSMixin:
     """TTS 音声生成を担当する Mixin。"""
 
-    def generate_voice(self, speaker: str, text: str, tone: str, ep_num: int, row_idx: int, awakening: int = 0) -> str:
+    def generate_voice(self, speaker: str, text: str, tone: str, ep_num: int, row_idx: int) -> str:
         """Gemini-3.1-Flash-TTS を用いて音声を生成し、WAVヘッダーを付与して保存する"""
         voice_name = self.voice_map.get(speaker.upper(), "Charon")
-        if speaker.upper() == "NAGISA":
-            char_desc = self._get_nagisa_profile(awakening)
-        else:
-            char_desc = self.char_profiles.get(speaker.upper(), "Narrator")
         print(f"  [TTS] Generating voice for {speaker} (Voice: {voice_name}, Tone: {tone})...")
 
-        # 感情タグをテキスト先頭に付加（マッピングがあれば）
+        # Gemini TTS は contents に渡した文字列をそのまま読み上げる。
+        # スタイル制御は "Say in a {emotion} tone: {text}" の自然言語プレフィックスで行う。
         emotion_tag = TONE_TAG_MAP.get(tone, "")
-        tagged_text = f"[{emotion_tag}] {text}" if emotion_tag else text
-
-        # 詳細な指示プロンプトを構築
-        full_prompt = (
-            f"以下のテキストを日本語で自然に読み上げてください。語尾まで丁寧に発音し、日本語本来のイントネーションで読み上げること。\n"
-            f"【キャラクター】{speaker}：{char_desc}\n"
-            f"【トーン】{tone}\n"
-            f"【テキスト】{tagged_text}"
-        )
+        if emotion_tag:
+            full_prompt = f"Say in a {emotion_tag} tone: {text}"
+        else:
+            full_prompt = text
 
         for attempt in range(MAX_RETRIES):
             try:

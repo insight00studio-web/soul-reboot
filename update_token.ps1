@@ -95,7 +95,23 @@ print('Token refresh OK')
 " 2>&1
     Pop-Location
 
-    if ($LASTEXITCODE -eq 0) {
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARNING: Google refresh token is invalid. Re-authenticating..." -ForegroundColor Red
+        Write-Host "  Browser will open. Please login with your Google account." -ForegroundColor Yellow
+        $googleReAuthScript = "$PSScriptRoot\project_ai_academy\google_reauth.py"
+        $credentialsPath = "$PSScriptRoot\project_ai_academy\credentials.json"
+        Push-Location "$PSScriptRoot\project_ai_academy"
+        python $googleReAuthScript $credentialsPath $googleTokenPath 2>&1
+        Pop-Location
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "OK: Google re-authentication complete." -ForegroundColor Green
+        } else {
+            Write-Host "ERROR: Google re-authentication failed." -ForegroundColor Red
+            Write-Host "  Manual: cd project_ai_academy && python google_reauth.py credentials.json token.json" -ForegroundColor Yellow
+        }
+    }
+
+    if (Test-Path $googleTokenPath) {
         Write-Host "Uploading token.json to GitHub Secret..." -ForegroundColor Yellow
         $googleToken = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((Get-Content $googleTokenPath -Raw)))
         gh secret set GOOGLE_TOKEN_JSON --repo insight00studio-web/soul-reboot --body $googleToken
@@ -104,8 +120,6 @@ print('Token refresh OK')
         } else {
             Write-Host "ERROR: GOOGLE_TOKEN_JSON update failed." -ForegroundColor Red
         }
-    } else {
-        Write-Host "ERROR: Google token refresh failed. Re-authentication may be required." -ForegroundColor Red
     }
 }
 

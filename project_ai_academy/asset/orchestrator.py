@@ -6,6 +6,7 @@ AttireMixin / MasterMixin / TTSMixin / ImageMixin を合成した薄いファサ
 import argparse
 import os
 import time
+from collections import Counter
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -14,7 +15,15 @@ from google import genai
 from sheets_db import SoulRebootDB
 
 from .attire import AttireMixin
-from .constants import MAX_RETRIES, OUTFIT_DEFINITIONS
+from .constants import (
+    BATCH_MAX_DURATION_SEC,
+    BATCH_MIN_LINES,
+    BATCH_TONE_DOMINANCE,
+    MAX_RETRIES,
+    OUTFIT_DEFINITIONS,
+    TEXT_TO_DURATION_RATIO,
+    TTS_BATCH_ENABLED,
+)
 from .image import ImageMixin
 from .master import MasterMixin
 from .tts import TTSMixin
@@ -119,6 +128,87 @@ class AssetGenerator(AttireMixin, MasterMixin, TTSMixin, ImageMixin):
         print(f"    ERROR: {label} failed: {exc}")
         return False
 
+    def _plan_dialog_batches(self, scripts: list[dict]) -> list[dict]:
+        """連続するダイアログ行（NAGISA + SHINJI 等、2話者以下）からバッチ計画を作る。
+
+        戻り値の各 plan: {
+            "scene_num": int,
+            "row_idxs": [int, ...],
+            "turns": [{"speaker": str, "text": str, "tone": str}, ...]
+        }
+        - 同一シーン内の連続行のみ対象
+        - スパン内ユニーク話者数 == 2（純粋なダイアログ）
+        - 想定総再生時間 ≤ BATCH_MAX_DURATION_SEC
+        - スパン長 ≥ BATCH_MIN_LINES
+        - 最頻トーン占有率 ≥ BATCH_TONE_DOMINANCE
+        - 既存音声ファイルがあるスパンはスキップ
+        """
+        plans: list[dict] = []
+        current: list[dict] = []
+        current_scene: int | None = None
+
+        def flush():
+            if not current:
+                return
+            speakers = {t["speaker"].upper() for t in current}
+            if len(current) < BATCH_MIN_LINES or len(speakers) != 2:
+                current.clear()
+                return
+            est_duration = sum(len(t["text"]) for t in current) * TEXT_TO_DURATION_RATIO
+            if est_duration > BATCH_MAX_DURATION_SEC:
+                current.clear()
+                return
+            tones = [t.get("tone", "") for t in current]
+            _, top_count = Counter(tones).most_common(1)[0]
+            if top_count / len(tones) < BATCH_TONE_DOMINANCE:
+                current.clear()
+                return
+            plans.append({
+                "scene_num": current_scene,
+                "row_idxs": [t["_row_idx"] for t in current],
+                "turns": [
+                    {"speaker": t["speaker"], "text": t["text"], "tone": t.get("tone", "")}
+                    for t in current
+                ],
+            })
+            current.clear()
+
+        for line in scripts:
+            scene_num = int(line.get("シーン番号", 1))
+            speaker = line.get("話者", "").upper()
+            text = line.get("セリフ・地の文", "")
+            tone = line.get("感情トーン", "通常")
+            existing_audio = line.get("音声ファイルパス")
+            audio_exists = existing_audio and os.path.exists(existing_audio)
+
+            # NAGISA / SHINJI 以外、またはテキスト・音声状態でバッチ不可ならスパンを区切る
+            if (
+                speaker not in ("NAGISA", "SHINJI")
+                or not text
+                or audio_exists
+                or scene_num != current_scene
+            ):
+                flush()
+                current_scene = scene_num if speaker in ("NAGISA", "SHINJI") and not audio_exists else None
+                if speaker in ("NAGISA", "SHINJI") and text and not audio_exists:
+                    current.append({
+                        "_row_idx": line["_row_idx"],
+                        "speaker": speaker,
+                        "text": text,
+                        "tone": tone,
+                    })
+                continue
+
+            current.append({
+                "_row_idx": line["_row_idx"],
+                "speaker": speaker,
+                "text": text,
+                "tone": tone,
+            })
+
+        flush()
+        return plans
+
     def process_episode(self, ep_num: int, limit: int = None):
         """指定された話数のアセットを処理する"""
         gen_count = 0
@@ -153,6 +243,21 @@ class AssetGenerator(AttireMixin, MasterMixin, TTSMixin, ImageMixin):
             scene_all_speakers.setdefault(sn, [])
             if sp:
                 scene_all_speakers[sn].append(sp)
+
+        # マルチスピーカーバッチ計画（Phase 1: NAGISA + SHINJI のダイアログのみ）
+        batch_first_row_to_plan: dict[int, dict] = {}
+        batch_handled_rows: set[int] = set()
+        if TTS_BATCH_ENABLED:
+            batch_plans = self._plan_dialog_batches(scripts)
+            for plan in batch_plans:
+                batch_first_row_to_plan[plan["row_idxs"][0]] = plan
+            if batch_plans:
+                total_batched_lines = sum(len(p["row_idxs"]) for p in batch_plans)
+                print(
+                    f"  [TTS-BATCH] Planned {len(batch_plans)} batches "
+                    f"covering {total_batched_lines} lines "
+                    f"(would be {total_batched_lines} individual calls)"
+                )
 
         for line in scripts:
             if limit is not None and gen_count >= limit:
@@ -192,23 +297,48 @@ class AssetGenerator(AttireMixin, MasterMixin, TTSMixin, ImageMixin):
             # --- 音声生成 ---
             # パスが設定済みでもファイルが存在しない場合（別ランナー等）は再生成する
             existing_audio = line.get("音声ファイルパス")
-            if not existing_audio or not os.path.exists(existing_audio):
-                if speaker not in self.voice_map and speaker:
-                    print(f"  [TTS] WARN: Unknown speaker '{speaker}'. Using default voice (Charon).")
-                if speaker:
-                    audio_path = self.generate_voice(speaker, text, tone, ep_num, row_idx)
-                    if audio_path:
-                        # Scriptsシートの更新
-                        self.db.update_script_audio_path(row_idx, audio_path)
-                        gen_count += 1
-                        # Assetsシートの登録
+            if existing_audio and os.path.exists(existing_audio):
+                continue
+
+            # バッチで既に処理済みならスキップ
+            if row_idx in batch_handled_rows:
+                continue
+
+            # バッチの先頭行ならまず一括生成を試みる
+            if row_idx in batch_first_row_to_plan:
+                plan = batch_first_row_to_plan[row_idx]
+                batch_paths = self.generate_voice_batch_dialog(
+                    plan["turns"], ep_num, plan["scene_num"], plan["row_idxs"]
+                )
+                if batch_paths is not None:
+                    for r, path, turn in zip(plan["row_idxs"], batch_paths, plan["turns"]):
+                        self.db.update_script_audio_path(r, path)
                         self.db.register_asset(
                             episode_number=ep_num,
-                            scene_number=scene_num,
-                            asset_type=f"AUDIO_{speaker}",
-                            file_path=audio_path,
-                            generation_prompt=text
+                            scene_number=plan["scene_num"],
+                            asset_type=f"AUDIO_{turn['speaker'].upper()}",
+                            file_path=path,
+                            generation_prompt=turn["text"],
                         )
+                        gen_count += 1
+                        batch_handled_rows.add(r)
+                    continue
+                # バッチ失敗時は素通り → 各行を個別生成にフォールバック
+
+            if speaker not in self.voice_map and speaker:
+                print(f"  [TTS] WARN: Unknown speaker '{speaker}'. Using default voice (Charon).")
+            if speaker:
+                audio_path = self.generate_voice(speaker, text, tone, ep_num, row_idx)
+                if audio_path:
+                    self.db.update_script_audio_path(row_idx, audio_path)
+                    gen_count += 1
+                    self.db.register_asset(
+                        episode_number=ep_num,
+                        scene_number=scene_num,
+                        asset_type=f"AUDIO_{speaker}",
+                        file_path=audio_path,
+                        generation_prompt=text
+                    )
 
 
 def main():

@@ -94,12 +94,26 @@ def split_wav_by_silence(
         (s, e) for (s, e) in regions if s > 0 and e < len(samples)
     ]
 
-    if len(internal_regions) + 1 != expected_count:
+    needed_splits = expected_count - 1
+    print(f"    [SPLIT] detected {len(internal_regions)} internal silences, need {needed_splits}")
+
+    if len(internal_regions) < needed_splits:
+        # 必要数に足りない → 諦めてフォールバック
         return None
+
+    # 必要数より多く検出された場合は、長い無音ほど話者交代の境界らしいので
+    # 上位 needed_splits 個を採用（位置順に並べ直す）
+    if len(internal_regions) > needed_splits:
+        sorted_by_length = sorted(
+            internal_regions, key=lambda r: r[1] - r[0], reverse=True
+        )
+        chosen = sorted(sorted_by_length[:needed_splits], key=lambda r: r[0])
+    else:
+        chosen = internal_regions
 
     # 各無音区間の中点を分割点に
     split_points_sec = [
-        ((s + e) / 2.0) / framerate for (s, e) in internal_regions
+        ((s + e) / 2.0) / framerate for (s, e) in chosen
     ]
 
     boundaries = [0.0] + split_points_sec + [total_sec]

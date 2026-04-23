@@ -41,3 +41,5 @@ Thumbs.db
 
 # Claude Code internal
 **/.claude/worktrees/
+**/.claude/scheduled_tasks.lock
+**/.claude/tmp/

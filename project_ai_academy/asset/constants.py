@@ -10,7 +10,7 @@ MAX_RETRIES = 5            # 生成リトライ上限
 TTS_BATCH_ENABLED = True       # False で完全に従来動作へロールバック
 BATCH_MAX_DURATION_SEC = 90    # 1バッチの想定総再生秒（drift 回避）
 BATCH_MIN_LINES = 2            # バッチ対象の最小行数
-BATCH_TONE_DOMINANCE = 0.6     # スパン内最頻トーンの占有率しきい値（未満なら個別生成）
+BATCH_TONE_DOMINANCE = 0.0     # 0.0 でトーン制約撤廃（最頻トーンで一括生成、行ごとの感情差は妥協）
 TEXT_TO_DURATION_RATIO = 0.15  # 文字数 × この値 = 想定再生秒（バッチ尺見積用）
 
 # 音声分割（無音検出）設定

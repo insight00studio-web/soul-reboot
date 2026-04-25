@@ -1,9 +1,21 @@
 ---
 name: trigger-episode
-description: Soul Reboot の Phase A (台本生成) または Phase B (アセット生成〜公開) を手動トリガーする定型手順。ユーザーが「第N話を生成して」「Phase A 回して」等と指示した時に使う。前提チェック（トークン有効期限、直近run状態）も含む。
+description: Soul Reboot の Phase A (台本生成) または Phase B (アセット生成〜公開) を手動トリガーする定型手順。ユーザーが「第N話を生成して」「Phase A 回して」等と指示した時に使う。トークン更新・前提チェックも含む。
 ---
 
 # エピソード手動トリガー手順
+
+## ステップ0: トークン更新（必須・毎回）
+
+Phase A / Phase B を実行する前に**必ず**トークンを更新する。
+期限切れでも有効でも、常に実行してよい（数秒で完了、冪等）。
+
+```powershell
+& "C:\Users\uca-n\youtube\update_token.ps1"
+```
+
+出力に `OK: CLAUDE_CREDENTIALS_JSON updated` が含まれていれば成功。
+失敗した場合はトリガーを中断しユーザーに報告する。
 
 ## Phase A（台本生成）手動実行
 
@@ -23,14 +35,13 @@ Phase A は完了後、自動で Phase B をトリガーする設計。
 gh workflow run phase_b.yml --repo insight00studio-web/soul-reboot -f episode=<N>
 ```
 
-## 実行前チェック
+## 実行前チェック（ステップ0の後）
 
-1. **CLAUDE_CODE_OAUTH_TOKEN 期限**: 約36〜48時間で切れる。前回 `update_token.ps1` を実行した時刻を確認。
-2. **直近 run の重複防止**: 同じ話が既に生成中でないか確認
+1. **直近 run の重複防止**: 同じ話が既に生成中でないか確認
    ```bash
    gh run list --repo insight00studio-web/soul-reboot --limit 5
    ```
-3. **GitHub Actions 無料枠**: 月2,000分。1話あたり約80分消費。月25話超で超過警告。
+2. **GitHub Actions 無料枠**: 月2,000分。1話あたり約80分消費。月25話超で超過警告。
 
 ## 実行後
 

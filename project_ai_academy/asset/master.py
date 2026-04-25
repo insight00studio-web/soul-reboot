@@ -7,6 +7,7 @@ MasterMixin は AssetGenerator に合成される。単独では使わない。
      self._retry_on_429 が利用可能であること。
 """
 
+import os
 import time
 
 from google.genai import types
@@ -97,6 +98,8 @@ class MasterMixin:
                 with open(file_path, "wb") as f:
                     f.write(image_data)
                 print(f"    [OUTFIT MASTER] Saved: {file_path}")
+                # Drive キャッシュが有効なら生成直後にアップロード
+                self._upload_outfit_master_to_drive(char_key, outfit_key, str(file_path))
                 time.sleep(RATE_LIMIT_WAIT)
                 return True
             except Exception as e:
@@ -105,8 +108,54 @@ class MasterMixin:
                 return False
         return False
 
+    def _upload_outfit_master_to_drive(self, char_key: str, outfit_key: str, file_path: str) -> None:
+        """生成した outfit master を Drive フォルダにアップロードする（設定時のみ）。"""
+        folder_id = os.environ.get("SOUL_REBOOT_DRIVE_MASTERS_FOLDER_ID", "")
+        if not folder_id:
+            return
+        try:
+            from drive_uploader import DriveUploader
+            filename = f"{char_key.lower()}_casual_{outfit_key}.png"
+            DriveUploader().upload_image(file_path, filename, folder_id)
+        except Exception as e:
+            print(f"  [DRIVE] WARN: outfit master upload failed ({char_key}/{outfit_key}): {e}")
+
+    def _download_outfit_masters_from_drive(self) -> int:
+        """Drive フォルダから outfit master をダウンロードし、取得できた枚数を返す。"""
+        folder_id = os.environ.get("SOUL_REBOOT_DRIVE_MASTERS_FOLDER_ID", "")
+        if not folder_id:
+            return 0
+        try:
+            from drive_uploader import DriveUploader
+            uploader = DriveUploader()
+            files = uploader.list_files(folder_id)
+            if not files:
+                return 0
+            drive_map = {f["name"]: f["id"] for f in files}
+            downloaded = 0
+            for char_key in OUTFIT_DEFINITIONS:
+                for outfit_key in OUTFIT_DEFINITIONS[char_key]:
+                    filename = f"{char_key.lower()}_casual_{outfit_key}.png"
+                    local_path = self.outfit_master_paths[char_key][outfit_key]
+                    if local_path.exists():
+                        continue
+                    if filename not in drive_map:
+                        continue
+                    if uploader.download_file(drive_map[filename], str(local_path)):
+                        print(f"  [DRIVE] Downloaded outfit master: {filename}")
+                        downloaded += 1
+            return downloaded
+        except Exception as e:
+            print(f"  [DRIVE] WARN: outfit master download failed: {e}")
+            return 0
+
     def _ensure_outfit_masters(self):
-        """私服マスター画像が不足している場合に自動生成する"""
+        """私服マスター画像が不足している場合に Drive キャッシュまたは生成で補う"""
+        # まず Drive からダウンロードを試みる
+        downloaded = self._download_outfit_masters_from_drive()
+        if downloaded:
+            print(f"[OUTFIT MASTERS] {downloaded}枚を Drive からダウンロードしました")
+
         missing = [
             (char_key, outfit_key)
             for char_key in OUTFIT_DEFINITIONS

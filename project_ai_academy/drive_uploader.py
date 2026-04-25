@@ -13,10 +13,11 @@ Phase B 完了後に生成した MP4 を指定フォルダへ保存する。
 """
 
 import argparse
+import io
 import os
 from pathlib import Path
 
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 from drive_auth import get_drive_client
 
@@ -73,6 +74,43 @@ class DriveUploader:
         link = response.get("webViewLink", f"https://drive.google.com/file/d/{file_id}/view")
         print(f"[DRIVE] 完了: {link}")
         return link
+
+    def upload_image(self, src_path: str, filename: str, folder_id: str) -> str:
+        """PNG 画像を Drive フォルダにアップロードしファイル ID を返す。"""
+        file_metadata: dict = {"name": filename, "parents": [folder_id]}
+        media = MediaFileUpload(src_path, mimetype="image/png")
+        f = self.drive.files().create(
+            body=file_metadata, media_body=media, fields="id"
+        ).execute()
+        file_id = f.get("id", "")
+        print(f"[DRIVE] Uploaded {filename} → {file_id}")
+        return file_id
+
+    def list_files(self, folder_id: str) -> list[dict]:
+        """Drive フォルダ内のファイル一覧を [{id, name}] で返す。"""
+        results = self.drive.files().list(
+            q=f"'{folder_id}' in parents and trashed = false",
+            fields="files(id, name)",
+            pageSize=200,
+        ).execute()
+        return results.get("files", [])
+
+    def download_file(self, file_id: str, dest_path: str) -> bool:
+        """Drive ファイルをローカルにダウンロードする。成功時 True。"""
+        try:
+            request = self.drive.files().get_media(fileId=file_id)
+            Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
+            buf = io.BytesIO()
+            downloader = MediaIoBaseDownload(buf, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            with open(dest_path, "wb") as f:
+                f.write(buf.getvalue())
+            return True
+        except Exception as e:
+            print(f"[DRIVE] WARN: Download failed for {file_id}: {e}")
+            return False
 
 
 def main():

@@ -215,10 +215,21 @@ class TTSMixin:
         if not audio_data:
             return None
 
-        # まずバッチ全体を一時 WAV として保存
-        ep_dir = self.assets_dir / "audio" / f"ep{ep_num:03d}"
+        batch_path = self.assets_dir / "audio" / f"ep{ep_num:03d}" / f"ep{ep_num:03d}_sc{scene_num:02d}_batch.wav"
+        return self._save_and_split_batch_wav(audio_data, mime_type, batch_path, turns, row_idxs, ep_num)
+
+    def _save_and_split_batch_wav(
+        self,
+        audio_data: bytes,
+        mime_type: str,
+        batch_path,
+        turns: list[dict],
+        row_idxs: list[int],
+        ep_num: int,
+    ) -> list[str] | None:
+        """バッチ生成した音声データをWAV保存→無音分割→行ごとファイル書き出し。"""
+        ep_dir = batch_path.parent
         ep_dir.mkdir(parents=True, exist_ok=True)
-        batch_path = ep_dir / f"ep{ep_num:03d}_sc{scene_num:02d}_batch.wav"
 
         print(f"    MIME: {mime_type}, size: {len(audio_data)} bytes")
         if audio_data[:4] == b'RIFF':
@@ -231,7 +242,6 @@ class TTSMixin:
                 wav_file.setframerate(24000)
                 wav_file.writeframes(audio_data)
 
-        # 行ごとに分割
         boundaries = split_wav_by_silence(
             str(batch_path),
             expected_count=len(turns),
@@ -246,7 +256,6 @@ class TTSMixin:
             time.sleep(RATE_LIMIT_WAIT)
             return None
 
-        # 各セグメントを per-line WAV として書き出し
         out_paths: list[str] = []
         for turn, row_idx, (start_s, end_s) in zip(turns, row_idxs, boundaries):
             speaker = turn["speaker"].upper()
@@ -258,3 +267,79 @@ class TTSMixin:
 
         time.sleep(RATE_LIMIT_WAIT)
         return out_paths
+
+    def generate_voice_batch_monologue(
+        self,
+        turns: list[dict],
+        ep_num: int,
+        scene_num: int,
+        row_idxs: list[int],
+    ) -> list[str] | None:
+        """単話者バッチTTS: 同一シーン内の連続行を1コールで生成→無音分割。
+
+        turns: [{"speaker": str, "text": str, "tone": str}, ...]  (全て同一話者)
+        return: row_idxs と同じ長さの per-line WAV パスリスト。失敗時は None。
+        """
+        assert len(turns) == len(row_idxs)
+        speaker = turns[0]["speaker"].upper()
+        voice_name = self.voice_map.get(speaker, "Charon")
+        style = CHAR_STYLE_PREFIX.get(speaker, "")
+
+        # 各行を段落として連結（文末の間でsplit_wav_by_silenceが分割できる）
+        lines_text = "\n\n".join(t["text"] for t in turns)
+        full_prompt = (
+            f"{style} Narrate each passage clearly, with a distinct pause between them:"
+            f"\n\n{lines_text}"
+        )
+
+        print(f"  [TTS-MONO] Scene {scene_num}: {len(turns)} lines, speaker={speaker}")
+
+        audio_data = None
+        mime_type = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.tts_model,
+                    contents=full_prompt,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["AUDIO"],
+                        speech_config=types.SpeechConfig(
+                            voice_config=types.VoiceConfig(
+                                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                    voice_name=voice_name
+                                )
+                            )
+                        ),
+                    ),
+                )
+                if response is None or not response.candidates:
+                    print(f"    WARN: Empty response (Attempt {attempt+1}/{MAX_RETRIES}). Retrying...")
+                    time.sleep(TTS_RETRY_WAIT_429)
+                    continue
+                content_obj = response.candidates[0].content
+                if content_obj is None or not content_obj.parts:
+                    print(f"    WARN: No content (Attempt {attempt+1}/{MAX_RETRIES}). Retrying...")
+                    time.sleep(TTS_RETRY_WAIT_429)
+                    continue
+                for part in content_obj.parts:
+                    if part.inline_data:
+                        audio_data = part.inline_data.data
+                        mime_type = part.inline_data.mime_type
+                        break
+                if audio_data:
+                    break
+                print(f"    WARN: No audio data (Attempt {attempt+1}/{MAX_RETRIES}). Retrying...")
+                time.sleep(TTS_RETRY_WAIT_429)
+            except Exception as e:
+                if self._retry_on_429(e, TTS_RETRY_WAIT_429, attempt, "Mono voice generation"):
+                    continue
+                return None
+
+        if not audio_data:
+            return None
+
+        batch_path = (
+            self.assets_dir / "audio" / f"ep{ep_num:03d}"
+            / f"ep{ep_num:03d}_sc{scene_num:02d}_{speaker.lower()}_mono.wav"
+        )
+        return self._save_and_split_batch_wav(audio_data, mime_type, batch_path, turns, row_idxs, ep_num)

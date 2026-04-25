@@ -20,6 +20,7 @@ from .constants import (
     BATCH_MIN_LINES,
     BATCH_TONE_DOMINANCE,
     MAX_RETRIES,
+    MONO_BATCH_ENABLED,
     OUTFIT_DEFINITIONS,
     TEXT_TO_DURATION_RATIO,
     TTS_BATCH_ENABLED,
@@ -210,6 +211,72 @@ class AssetGenerator(AttireMixin, MasterMixin, TTSMixin, ImageMixin):
         flush()
         return plans
 
+    def _plan_monobatch_narration(self, scripts: list[dict]) -> list[dict]:
+        """同一シーン内の連続する単話者行（NARRATOR / SYSTEM）からモノバッチ計画を作る。
+
+        戻り値の各 plan: {
+            "batch_type": "mono",
+            "scene_num": int,
+            "row_idxs": [int, ...],
+            "turns": [{"speaker": str, "text": str, "tone": str}, ...]
+        }
+        """
+        plans: list[dict] = []
+        current: list[dict] = []
+        current_scene: int | None = None
+        current_speaker: str | None = None
+
+        def flush():
+            if len(current) < BATCH_MIN_LINES:
+                current.clear()
+                return
+            plans.append({
+                "batch_type": "mono",
+                "scene_num": current_scene,
+                "row_idxs": [t["_row_idx"] for t in current],
+                "turns": [
+                    {"speaker": t["speaker"], "text": t["text"], "tone": t.get("tone", "")}
+                    for t in current
+                ],
+            })
+            current.clear()
+
+        for line in scripts:
+            scene_num = int(line.get("シーン番号", 1))
+            speaker = line.get("話者", "").upper()
+            text = line.get("セリフ・地の文", "")
+            existing_audio = line.get("音声ファイルパス")
+            audio_exists = existing_audio and os.path.exists(existing_audio)
+
+            eligible = speaker in ("NARRATOR", "SYSTEM") and text and not audio_exists
+            same_span = scene_num == current_scene and speaker == current_speaker
+
+            if not eligible or not same_span:
+                flush()
+                if eligible:
+                    current_scene = scene_num
+                    current_speaker = speaker
+                    current.append({
+                        "_row_idx": line["_row_idx"],
+                        "speaker": speaker,
+                        "text": text,
+                        "tone": line.get("感情トーン", "通常"),
+                    })
+                else:
+                    current_scene = None
+                    current_speaker = None
+                continue
+
+            current.append({
+                "_row_idx": line["_row_idx"],
+                "speaker": speaker,
+                "text": text,
+                "tone": line.get("感情トーン", "通常"),
+            })
+
+        flush()
+        return plans
+
     def process_episode(self, ep_num: int, limit: int = None):
         """指定された話数のアセットを処理する"""
         gen_count = 0
@@ -245,20 +312,28 @@ class AssetGenerator(AttireMixin, MasterMixin, TTSMixin, ImageMixin):
             if sp:
                 scene_all_speakers[sn].append(sp)
 
-        # マルチスピーカーバッチ計画（Phase 1: NAGISA + SHINJI のダイアログのみ）
+        # バッチ計画（ダイアログバッチ + モノバッチ）
         batch_first_row_to_plan: dict[int, dict] = {}
         batch_handled_rows: set[int] = set()
         if TTS_BATCH_ENABLED:
             batch_plans = self._plan_dialog_batches(scripts)
             for plan in batch_plans:
+                plan["batch_type"] = "dialog"
                 batch_first_row_to_plan[plan["row_idxs"][0]] = plan
-            if batch_plans:
-                total_batched_lines = sum(len(p["row_idxs"]) for p in batch_plans)
-                print(
-                    f"  [TTS-BATCH] Planned {len(batch_plans)} batches "
-                    f"covering {total_batched_lines} lines "
-                    f"(would be {total_batched_lines} individual calls)"
-                )
+        if MONO_BATCH_ENABLED:
+            mono_plans = self._plan_monobatch_narration(scripts)
+            for plan in mono_plans:
+                batch_first_row_to_plan[plan["row_idxs"][0]] = plan
+        all_plans = list(batch_first_row_to_plan.values())
+        if all_plans:
+            total_batched_lines = sum(len(p["row_idxs"]) for p in all_plans)
+            dialog_count = sum(1 for p in all_plans if p.get("batch_type") == "dialog")
+            mono_count = sum(1 for p in all_plans if p.get("batch_type") == "mono")
+            print(
+                f"  [TTS-BATCH] Planned {len(all_plans)} batches "
+                f"(dialog={dialog_count}, mono={mono_count}) "
+                f"covering {total_batched_lines} lines"
+            )
 
         for line in scripts:
             if limit is not None and gen_count >= limit:
@@ -308,9 +383,14 @@ class AssetGenerator(AttireMixin, MasterMixin, TTSMixin, ImageMixin):
             # バッチの先頭行ならまず一括生成を試みる
             if row_idx in batch_first_row_to_plan:
                 plan = batch_first_row_to_plan[row_idx]
-                batch_paths = self.generate_voice_batch_dialog(
-                    plan["turns"], ep_num, plan["scene_num"], plan["row_idxs"]
-                )
+                if plan.get("batch_type") == "mono":
+                    batch_paths = self.generate_voice_batch_monologue(
+                        plan["turns"], ep_num, plan["scene_num"], plan["row_idxs"]
+                    )
+                else:
+                    batch_paths = self.generate_voice_batch_dialog(
+                        plan["turns"], ep_num, plan["scene_num"], plan["row_idxs"]
+                    )
                 if batch_paths is not None:
                     for r, path, turn in zip(plan["row_idxs"], batch_paths, plan["turns"]):
                         self.db.update_script_audio_path(r, path)

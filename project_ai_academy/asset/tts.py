@@ -13,6 +13,7 @@ from google.genai import types
 
 from .audio_split import split_wav_by_silence, write_wav_segment
 from .constants import (
+    CHAR_STYLE_PREFIX,
     MAX_RETRIES,
     RATE_LIMIT_WAIT,
     SILENCE_MIN_SEC,
@@ -31,10 +32,20 @@ class TTSMixin:
         print(f"  [TTS] Generating voice for {speaker} (Voice: {voice_name}, Tone: {tone})...")
 
         # Gemini TTS は contents に渡した文字列をそのまま読み上げる。
-        # スタイル制御は "Say in a {emotion} tone: {text}" の自然言語プレフィックスで行う。
+        # キャラスタイル + 感情トーンを組み合わせた自然言語プレフィックスで制御する。
         emotion_tag = TONE_TAG_MAP.get(tone, "")
-        if emotion_tag:
-            full_prompt = f"Say in a {emotion_tag} tone: {text}"
+        style = CHAR_STYLE_PREFIX.get(speaker.upper(), "")
+        speaker_upper = speaker.upper()
+
+        if speaker_upper in ("NARRATOR", "SYSTEM"):
+            # ナレーター・システムは感情タグを無視して常に冷静な語り口
+            full_prompt = f"{style} Narrate: {text}" if style else text
+        elif style and emotion_tag:
+            full_prompt = f"{style} Deliver with a {emotion_tag} tone: {text}"
+        elif style:
+            full_prompt = f"{style} Say naturally: {text}"
+        elif emotion_tag:
+            full_prompt = f"Deliver with a {emotion_tag} tone: {text}"
         else:
             full_prompt = text
 
@@ -130,18 +141,20 @@ class TTSMixin:
         if len(unique_speakers) > 2:
             return None  # multi-speaker は最大2話者
 
-        # スパン内最頻トーンを採用（行単位の細かい感情制御は妥協）
-        dominant_tone, _ = Counter(t.get("tone", "") for t in turns).most_common(1)[0]
-        emotion_tag = TONE_TAG_MAP.get(dominant_tone, "")
+        # 行ごとに感情ヒントを埋め込み、より自然なダイアログ演技を促す
+        dialog_lines = []
+        for t in turns:
+            line_emotion = TONE_TAG_MAP.get(t.get("tone", ""), "")
+            sp_label = t["speaker"].upper()
+            if line_emotion:
+                dialog_lines.append(f"{sp_label} [{line_emotion}]: {t['text']}")
+            else:
+                dialog_lines.append(f"{sp_label}: {t['text']}")
+        dialog_body = "\n".join(dialog_lines)
+        full_prompt = f"Perform this natural dialog. Each speaker should sound distinct and not over-act:\n{dialog_body}"
 
-        # 台詞を "SPEAKER: text" 形式で改行連結
-        dialog_body = "\n".join(
-            f"{t['speaker'].upper()}: {t['text']}" for t in turns
-        )
-        if emotion_tag:
-            full_prompt = f"Say in a {emotion_tag} tone:\n{dialog_body}"
-        else:
-            full_prompt = dialog_body
+        # dominant_tone は printログ用に保持
+        dominant_tone, _ = Counter(t.get("tone", "") for t in turns).most_common(1)[0]
 
         speaker_voice_configs = [
             types.SpeakerVoiceConfig(

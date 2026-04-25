@@ -284,7 +284,7 @@ class VideoCompiler:
         if audio_path and os.path.exists(audio_path):
             raw_dur = self._get_audio_duration(audio_path)
             if raw_dur > 0:
-                duration = raw_dur + 0.3
+                duration = max(raw_dur + 0.05, 1.5)
                 audio_clip = AudioFileClip(audio_path)
             else:
                 # 破損ファイル: AudioFileClipは呼ばずテキスト長でフォールバック

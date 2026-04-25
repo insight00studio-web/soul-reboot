@@ -176,6 +176,58 @@ if (-not (Test-Path $youtubeTokenPath)) {
     }
 }
 
+# --- Google Drive Token Update ---
+Write-Host ""
+Write-Host "=== Google Drive Token Update ===" -ForegroundColor Cyan
+
+$driveTokenPath = "$PSScriptRoot\project_ai_academy\drive_token.json"
+
+if (-not (Test-Path $driveTokenPath)) {
+    Write-Host "WARN: drive_token.json not found. Running browser auth..." -ForegroundColor Yellow
+    Push-Location "$PSScriptRoot\project_ai_academy"
+    python drive_uploader.py --auth 2>&1
+    Pop-Location
+} else {
+    Write-Host "Refreshing Drive token..." -ForegroundColor Yellow
+    Push-Location "$PSScriptRoot\project_ai_academy"
+    $driveRefreshResult = python -c @"
+from drive_auth import get_drive_client
+try:
+    get_drive_client()
+    print('OK')
+except Exception as e:
+    print(f'ERROR: {e}')
+"@ 2>&1
+    Pop-Location
+
+    if ($driveRefreshResult -match "^OK") {
+        Write-Host "OK: Drive token refreshed." -ForegroundColor Green
+    } else {
+        Write-Host "WARNING: Drive refresh token is invalid. Re-authenticating..." -ForegroundColor Red
+        Write-Host "  Browser will open. Please login with your Google account." -ForegroundColor Yellow
+        Remove-Item $driveTokenPath -Force
+        Push-Location "$PSScriptRoot\project_ai_academy"
+        python drive_uploader.py --auth 2>&1
+        Pop-Location
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "OK: Drive re-authentication complete." -ForegroundColor Green
+        } else {
+            Write-Host "ERROR: Drive re-authentication failed." -ForegroundColor Red
+        }
+    }
+}
+
+if (Test-Path $driveTokenPath) {
+    Write-Host "Uploading drive_token.json to GitHub Secret..." -ForegroundColor Yellow
+    $driveToken = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((Get-Content $driveTokenPath -Raw)))
+    gh secret set DRIVE_TOKEN_JSON --repo insight00studio-web/soul-reboot --body $driveToken
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "OK: DRIVE_TOKEN_JSON updated." -ForegroundColor Green
+    } else {
+        Write-Host "ERROR: DRIVE_TOKEN_JSON update failed." -ForegroundColor Red
+    }
+}
+
 Write-Host ""
 Write-Host "All done! Phase A runs automatically at 01:00 JST." -ForegroundColor Green
 Write-Host ""

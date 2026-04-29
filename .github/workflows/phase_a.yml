@@ -102,7 +102,10 @@ jobs:
         if: ${{ inputs.skip_phase_b != true }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run phase_b.yml --repo ${{ github.repository }} -f episode=${{ steps.episode.outputs.episode }}
+        run: |
+          echo '{"ref":"master","inputs":{"episode":"${{ steps.episode.outputs.episode }}"}}' | \
+          gh api repos/${{ github.repository }}/actions/workflows/phase_b.yml/dispatches \
+            --method POST --input -
 
       - name: Cleanup sensitive files
         if: always()

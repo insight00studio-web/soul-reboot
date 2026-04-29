@@ -121,7 +121,7 @@ def main():
         except Exception as e:
             print(f"  WARN: episode_memory 書き出し失敗: {e}（続行）")
         current_step = "完了処理"
-        step_finalize(db, episode_number, plot, advance_episode=not args.force, analytics_summary=analytics_summary)
+        step_finalize(db, episode_number, plot, advance_episode=True, analytics_summary=analytics_summary)
         # 台本の総文字数（セリフ・地の文のみ集計）
         script_char_count = sum(
             len(line.get("セリフ・地の文", "")) for line in script_lines

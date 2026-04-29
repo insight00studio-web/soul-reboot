@@ -158,11 +158,8 @@ def step_finalize(db: SoulRebootDB, episode_number: int, plot: dict,
     """次の話数をConfigに書き込み、完了レポートを出力する"""
     print(f"\n[FINALIZE] STEP 6: 完了処理...")
 
-    # 次のエピソード番号に更新（--force 再生成時はスキップ）
     if advance_episode:
         db.set_config("CURRENT_EPISODE", episode_number + 1)
-    else:
-        print(f"  [FORCE再生成] CURRENT_EPISODE は変更しません")
 
     # 完了レポート
     print("\n" + "=" * 60)

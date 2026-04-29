@@ -141,7 +141,7 @@ def call_opus(prompt: str, system_prompt: str = "",
     JSONブロックが含まれていればパースして返す。なければテキストを返す。
     529 Overloadedエラーは最大max_retries回リトライ（retry_wait秒待機）。
     """
-    cmd = ["claude", "-p", "--output-format", "text", "--model", "claude-opus-4-6"]
+    cmd = ["claude", "-p", "--output-format", "text", "--model", "claude-opus-4-7"]
     if system_prompt:
         cmd.extend(["--system-prompt", system_prompt])
 

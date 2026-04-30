@@ -137,9 +137,9 @@ def call_opus(prompt: str, system_prompt: str = "",
               timeout: int = 600, max_retries: int = 3,
               retry_wait: int = 60) -> dict | str:
     """
-    Claude Code CLI経由でOpus 4.6を呼び出す。
+    Claude Code CLI経由でOpus 4.7を呼び出す。
     JSONブロックが含まれていればパースして返す。なければテキストを返す。
-    529 Overloadedエラーは最大max_retries回リトライ（retry_wait秒待機）。
+    529 Overloaded / タイムアウトは最大max_retries回リトライ（retry_wait秒待機）。
     """
     cmd = ["claude", "-p", "--output-format", "text", "--model", "claude-opus-4-7"]
     if system_prompt:
@@ -156,16 +156,23 @@ def call_opus(prompt: str, system_prompt: str = "",
     env = {k: v for k, v in os.environ.items() if k not in _EXCLUDED_ENV_KEYS}
 
     for attempt in range(max_retries + 1):
-        print(f"  [OPUS] Claude Opus 4.6 呼び出し中..." + (f" (リトライ {attempt}/{max_retries})" if attempt > 0 else ""))
-        result = subprocess.run(
-            cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            encoding="utf-8",
-            env=env,
-        )
+        print(f"  [OPUS] Claude Opus 4.7 呼び出し中..." + (f" (リトライ {attempt}/{max_retries})" if attempt > 0 else ""))
+        try:
+            result = subprocess.run(
+                cmd,
+                input=prompt,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                encoding="utf-8",
+                env=env,
+            )
+        except subprocess.TimeoutExpired:
+            if attempt < max_retries:
+                print(f"  [OPUS] タイムアウト({timeout}秒)。{retry_wait}秒後にリトライします...")
+                time.sleep(retry_wait)
+                continue
+            raise
 
         if result.returncode == 0:
             break

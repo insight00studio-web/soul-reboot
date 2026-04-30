@@ -17,7 +17,7 @@ def step_editor(db: SoulRebootDB, episode_number: int,
     修正版でスプレッドシートを上書きする。
     品質スコアも返す（Quality Gate用）。
     """
-    print(f"\n[EDITOR] STEP 4.5: Opus 4.6 - 第{episode_number}話台本監修...")
+    print(f"\n[EDITOR] STEP 4.5: Opus 4.7 - 第{episode_number}話台本監修...")
 
     editor_base = load_prompt("editor_prompt.md")
     plot_json = json.dumps(plot, ensure_ascii=False, indent=2)
@@ -103,7 +103,7 @@ def step_editor(db: SoulRebootDB, episode_number: int,
 
     max_json_retries = 2
     for json_attempt in range(max_json_retries + 1):
-        edited = call_opus(full_prompt)
+        edited = call_opus(full_prompt, timeout=900)
 
         if isinstance(edited, dict) or isinstance(edited, list):
             break

@@ -51,7 +51,12 @@ def check_youtube_token() -> tuple[bool, str]:
 
 
 def check_claude_token() -> tuple[bool, str]:
-    """Claude OAuth 認証情報ファイルの存在・有効期限チェック"""
+    """Claude OAuth 認証情報ファイルの存在・有効期限チェック。
+
+    accessToken 期限切れは False を返す。refreshToken の有効性は実際に
+    試行しない限り確認できないため、期限切れ = 要更新とみなしてアラートを飛ばす。
+    （Claude Code がローカルで動くと refreshToken がローテーションされるため）
+    """
     import json
     import time
 
@@ -67,9 +72,17 @@ def check_claude_token() -> tuple[bool, str]:
             return False, "refreshToken が見つかりません"
         remaining_hours = (expires_at_ms / 1000 - time.time()) / 3600
         if remaining_hours < 0:
-            # access token 期限切れだが refresh token があれば Claude Code が自動更新する
-            return True, f"accessToken 期限切れ（{abs(remaining_hours):.1f}時間前）→ refreshToken で自動更新されます"
-        return True, f"有効（残り {remaining_hours:.1f} 時間）、refreshToken あり"
+            return False, (
+                f"accessToken 期限切れ（{abs(remaining_hours):.1f}時間前）。"
+                "ローカルで Claude Code を使うと refreshToken がローテーションされるため、"
+                "update_token.ps1 を実行して GitHub Secret を更新してください。"
+            )
+        if remaining_hours < 6:
+            return False, (
+                f"accessToken の有効期限が残り {remaining_hours:.1f} 時間です。"
+                "Phase A 実行前に update_token.ps1 を実行することを推奨します。"
+            )
+        return True, f"有効（残り {remaining_hours:.1f} 時間）"
     except Exception as e:
         return False, f"認証情報の読み取りエラー: {e}"
 
@@ -119,7 +132,7 @@ def main() -> None:
                 "  2. Google トークンが invalid_grant の場合は再認証が必要です：\n"
                 "     cd project_ai_academy\n"
                 "     python -c \"import gspread; gspread.oauth()\"\n"
-                "  3. 次回 Phase A（JST 17:00）までに更新してください\n"
+                "  3. 次回 Phase A（JST 21:00）までに更新してください\n"
             )
             send_notification("[警告] Soul Reboot - トークン期限切れ検知", body)
         except Exception as e:

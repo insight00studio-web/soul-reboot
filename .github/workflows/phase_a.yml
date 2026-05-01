@@ -21,7 +21,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 jobs:
@@ -92,6 +92,20 @@ jobs:
             ARGS="$ARGS --force"
           fi
           python autonomous_engine.py $ARGS
+
+      - name: Commit episode memory to repository
+        working-directory: project_ai_academy
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add narrative/episode_memory/ memory_l1.json memory_l2.json
+          if git diff --cached --quiet; then
+            echo "No memory files changed, skipping commit"
+          else
+            EP=$(cat episode_number.txt 2>/dev/null || echo "??")
+            git commit -m "chore: episode memory ep_${EP} [skip ci]"
+            git push
+          fi
 
       - name: Set episode output
         id: episode

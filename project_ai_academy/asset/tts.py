@@ -11,7 +11,7 @@ from collections import Counter
 
 from google.genai import types
 
-from .audio_split import split_wav_by_silence, write_wav_segment
+from .audio_split import split_wav_by_silence, trim_silence_inplace, write_wav_segment
 from .constants import (
     CHAR_STYLE_PREFIX,
     MAX_RETRIES,
@@ -19,8 +19,26 @@ from .constants import (
     SILENCE_MIN_SEC,
     SILENCE_THRESHOLD_DB,
     TONE_TAG_MAP,
+    TRIM_HEAD_PAD_SEC,
+    TRIM_SILENCE_ENABLED,
+    TRIM_TAIL_PAD_SEC,
+    TRIM_THRESHOLD_DB,
     TTS_RETRY_WAIT_429,
 )
+
+
+def _trim_if_enabled(wav_path: str) -> None:
+    """TRIM_SILENCE_ENABLED が True の時のみ先頭・末尾無音をトリムする。"""
+    if not TRIM_SILENCE_ENABLED:
+        return
+    trimmed = trim_silence_inplace(
+        wav_path,
+        threshold_db=TRIM_THRESHOLD_DB,
+        head_pad_sec=TRIM_HEAD_PAD_SEC,
+        tail_pad_sec=TRIM_TAIL_PAD_SEC,
+    )
+    if trimmed is not None:
+        print(f"    [TRIM] {wav_path} → {trimmed:.2f}s (silence trimmed)")
 
 
 class TTSMixin:
@@ -113,6 +131,7 @@ class TTSMixin:
                         wav_file.writeframes(audio_data)
 
                 print(f"    Saved: {file_path}")
+                _trim_if_enabled(str(file_path))
                 time.sleep(RATE_LIMIT_WAIT)
                 return str(file_path)
 
@@ -263,6 +282,7 @@ class TTSMixin:
             seg_path = ep_dir / filename
             write_wav_segment(str(batch_path), str(seg_path), start_s, end_s)
             print(f"    Saved segment: {seg_path} ({end_s - start_s:.2f}s)")
+            _trim_if_enabled(str(seg_path))
             out_paths.append(str(seg_path))
 
         time.sleep(RATE_LIMIT_WAIT)

@@ -144,3 +144,73 @@ def write_wav_segment(
         wf.setsampwidth(sampwidth)
         wf.setframerate(framerate)
         wf.writeframes(segment)
+
+
+def trim_silence_inplace(
+    wav_path: str,
+    threshold_db: float = -40.0,
+    head_pad_sec: float = 0.05,
+    tail_pad_sec: float = 0.10,
+    min_duration_sec: float = 0.3,
+) -> float | None:
+    """WAV の先頭・末尾の無音を検出してトリムし、上書き保存する。
+
+    字幕とセリフのズレを縮めるため、TTS が出す先頭/末尾の無音余白を削る。
+    speech の前後に小さい padding を残すことで自然な聞こえを維持する。
+    トリム後の長さが min_duration_sec 未満、または変化が小さい場合は元ファイルを保持。
+
+    成功時はトリム後の秒数、スキップ時は None を返す。
+    """
+    samples, framerate, sampwidth = _read_pcm_mono(wav_path)
+    if len(samples) == 0:
+        return None
+
+    window_size = max(1, int(framerate * 0.02))  # 20ms 窓
+    n_windows = len(samples) // window_size
+    if n_windows == 0:
+        return None
+
+    block = samples[: n_windows * window_size].reshape(n_windows, window_size)
+    rms = np.sqrt(np.mean(block ** 2, axis=1) + 1e-12)
+    db = 20.0 * np.log10(rms + 1e-12)
+    is_speech = db >= threshold_db
+
+    if not np.any(is_speech):
+        return None  # 全部無音 → 触らない
+
+    speech_indices = np.where(is_speech)[0]
+    first_window = int(speech_indices[0])
+    last_window = int(speech_indices[-1])
+
+    head_pad_windows = int(round(head_pad_sec / 0.02))
+    tail_pad_windows = int(round(tail_pad_sec / 0.02))
+
+    start_window = max(0, first_window - head_pad_windows)
+    end_window = min(n_windows, last_window + 1 + tail_pad_windows)
+
+    start_frame = start_window * window_size
+    end_frame = end_window * window_size
+    trimmed_sec = (end_frame - start_frame) / framerate
+    original_sec = len(samples) / framerate
+
+    if trimmed_sec < min_duration_sec:
+        return None  # トリムしすぎ → 保持
+    if trimmed_sec >= original_sec - 0.02:
+        return None  # 変化なし → スキップ
+
+    with wave.open(wav_path, "rb") as wf:
+        nchannels = wf.getnchannels()
+        raw = wf.readframes(wf.getnframes())
+
+    bytes_per_frame = sampwidth * nchannels
+    start_byte = start_frame * bytes_per_frame
+    end_byte = end_frame * bytes_per_frame
+    segment = raw[start_byte:end_byte]
+
+    with wave.open(wav_path, "wb") as wf:
+        wf.setnchannels(nchannels)
+        wf.setsampwidth(sampwidth)
+        wf.setframerate(framerate)
+        wf.writeframes(segment)
+
+    return trimmed_sec

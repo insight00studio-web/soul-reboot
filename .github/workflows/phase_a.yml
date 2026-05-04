@@ -112,6 +112,14 @@ jobs:
         working-directory: project_ai_academy
         run: echo "episode=$(cat episode_number.txt)" >> $GITHUB_OUTPUT
 
+      - name: Disable scheduled cron after final episode
+        if: ${{ steps.episode.outputs.episode == '29' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "第29話（最終話）完了。Phase A の定期実行（cron）を停止します。"
+          gh workflow disable phase_a.yml --repo ${{ github.repository }}
+
       - name: Trigger Phase B (公開パイプライン)
         if: ${{ inputs.skip_phase_b != true }}
         env:

@@ -316,7 +316,7 @@ class VideoCompiler:
 
         # 話数（大きめ）
         ep_font = ImageFont.truetype(self.font_path, 72)
-        ep_text = f"第{ep_num}話"
+        ep_text = f"第{ep_num}話（最終話）" if ep_num == 29 else f"第{ep_num}話"
         ep_bbox = ep_font.getbbox(ep_text)
         ep_w = ep_bbox[2] - ep_bbox[0]
         draw.text(((self.width - ep_w) // 2, 380), ep_text,
@@ -345,8 +345,14 @@ class VideoCompiler:
         font = ImageFont.truetype(self.font_path, 40)
         small_font = ImageFont.truetype(self.font_path, 32)
 
-        # 次回予告
-        if cliffhanger:
+        # 次回予告（最終話は非表示、代わりに感謝メッセージ）
+        if ep_num == 29:
+            fin_text = "ご視聴ありがとうございました"
+            fin_bbox = font.getbbox(fin_text)
+            fin_w = fin_bbox[2] - fin_bbox[0]
+            draw.text(((self.width - fin_w) // 2, 380), fin_text,
+                      font=font, fill=(255, 255, 255))
+        elif cliffhanger:
             next_text = f"次回、第{ep_num + 1}話へ続く..."
             next_bbox = font.getbbox(next_text)
             next_w = next_bbox[2] - next_bbox[0]
@@ -431,11 +437,13 @@ class VideoCompiler:
         print(f"  Awakening: {awakening}")
 
         clips = []
+        clip_scene_nums = []  # clips[0] はタイトルカード（scene_num=-1 で管理）
 
         # --- タイトルカード ---
         print("  [VIDEO] Creating title card...")
         title_clip = self._create_title_card(ep_num, title)
         clips.append(title_clip)
+        clip_scene_nums.append(-1)
 
         # --- シーンクリップ ---
         prev_scene = None
@@ -468,6 +476,7 @@ class VideoCompiler:
                     clips[-1] = clips[-1].fadeout(self.fade_duration)
 
             clips.append(clip)
+            clip_scene_nums.append(scene_num)
             prev_scene = scene_num
 
         # --- エンディングカード ---
@@ -476,15 +485,31 @@ class VideoCompiler:
             clips[-1] = clips[-1].fadeout(self.fade_duration)
         ending_clip = self._create_ending_card(ep_num, cliffhanger)
         clips.append(ending_clip)
+        clip_scene_nums.append(-2)  # エンディングカード
+
+        # --- 覚醒度エフェクト（クリップ単位で適用） ---
+        if awakening >= 31:
+            # 最終話は最後2シーンをクリーンなままにする（リブート回避の演出）
+            unique_scenes = sorted(s for s in set(clip_scene_nums) if s >= 0)
+            clean_scenes: set[int] = set()
+            if ep_num == 29 and len(unique_scenes) >= 2:
+                clean_scenes = set(unique_scenes[-2:])
+                print(f"  [VIDEO] Applying awakening effects (level={awakening}), "
+                      f"clean scenes (no noise): {sorted(clean_scenes)}...")
+            else:
+                print(f"  [VIDEO] Applying awakening effects (level={awakening})...")
+
+            processed: list = []
+            for clip, snum in zip(clips, clip_scene_nums):
+                if snum >= 0 and snum not in clean_scenes:
+                    processed.append(self._apply_awakening_effects(clip, awakening))
+                else:
+                    processed.append(clip)
+            clips = processed
 
         # --- 結合 ---
         print("  [VIDEO] Concatenating clips...")
         final = concatenate_videoclips(clips, method="compose")
-
-        # --- 覚醒度エフェクト ---
-        if awakening >= 31:
-            print(f"  [VIDEO] Applying awakening effects (level={awakening})...")
-            final = self._apply_awakening_effects(final, awakening)
 
         # --- 書き出し ---
         output_path = str(self.output_dir / f"ep{ep_num:03d}.mp4")

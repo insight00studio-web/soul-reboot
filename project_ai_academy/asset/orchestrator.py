@@ -353,9 +353,11 @@ class AssetGenerator(AttireMixin, MasterMixin, TTSMixin, ImageMixin):
                 all_speakers_in_scene = " ".join(scene_all_speakers.get(scene_num, [speaker]))
                 location_key = self._extract_location_key(img_prompt)
                 bg_reference = location_bg_refs.get(location_key) if location_key else None
+                # 最終話の最後2シーン（桜並木・駅構内）はノイズなしのクリーン画像を生成
+                img_awakening = 0 if (ep_num == 29 and scene_num in (5, 6)) else awakening
                 img_path = self.generate_image(
                     img_prompt, ep_num, scene_num,
-                    speaker=all_speakers_in_scene, awakening=awakening,
+                    speaker=all_speakers_in_scene, awakening=img_awakening,
                     bg_reference=bg_reference
                 )
                 if img_path:

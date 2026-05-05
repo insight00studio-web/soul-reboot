@@ -99,9 +99,18 @@ class ImageMixin:
         else:
             silhouette_descs = self._detect_silhouette_chars(img_prompt)
             if silhouette_descs:
-                # サブキャラクターがいるシーン → シルエットで表示
+                # サブキャラクターがいるシーン → キーワードを除去してシルエットで表示
+                sanitized_prompt = img_prompt
+                for keyword in self.silhouette_chars:
+                    sanitized_prompt = re.sub(
+                        rf'\b{re.escape(keyword)}\b',
+                        '',
+                        sanitized_prompt,
+                        flags=re.IGNORECASE,
+                    )
+                sanitized_prompt = re.sub(r'  +', ' ', sanitized_prompt).strip()
                 parts = [
-                    f"Draw an anime-style illustration: {img_prompt}",
+                    f"Draw an anime-style illustration: {sanitized_prompt}",
                     f"Setting: {attire}",
                 ]
                 for desc in silhouette_descs:
